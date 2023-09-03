@@ -52,12 +52,12 @@ public class MyApplication {
     @Operation(summary = "CUSTOM: Main messaging service",
             description = "Main messaging service, may be slightly unstable at the moment. :-)")
     public Response idRetriever() throws InterruptedException {
-        ObjectNode jsonObject = kanin.getMessageFromExchange();
+        String jsonObject = kanin.getMessageFromExchange();
 
         // register queue
         // attach queue to an exchange
         // get all messages and relay
 
-        return Response.ok(jsonObject.toString()).build();
+        return Response.ok(jsonObject).build();
     }
 }

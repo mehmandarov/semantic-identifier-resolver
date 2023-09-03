@@ -95,7 +95,38 @@ public class QueueHandler {
         return jsonObject;
     }
 
-    public ObjectNode getMessageFromExchange() {
+    public String getMessageFromExchange() {
+        String EXCHANGE_NAME = "exchange_id_mapper";
+        String QUEUE_NAME = "my_TESTAPP_queue";
+        String ROUTING_KEY = "routing_id_lookup_with_ctx";
+
+        ConnectionFactory factory = new ConnectionFactory();
+
+        try (Connection connection = factory.newConnection();
+             Channel channel = connection.createChannel()) {
+            // Declare the exchange (if not already declared)
+            //channel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.DIRECT);
+
+            // Declare the queue (if not already declared)
+            channel.queueDeclare(QUEUE_NAME, true, false, false, null);
+
+            // Bind the queue to the exchange with the routing key
+            channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
+
+            System.out.println(" [*] Waiting for messages. To exit, press Ctrl+C");
+
+            // Create a consumer and set up a callback to handle incoming messages
+            DeliverCallback deliverCallback = (consumerTag, delivery) -> {
+                String message = new String(delivery.getBody(), "UTF-8");
+                System.out.println(" [x] Received '" + message + "'");
+            };
+
+            // Start consuming messages from the queue
+            channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {
+            });
+        } catch (IOException | TimeoutException e) {
+        throw new RuntimeException(e);
+    }
         return null;
     }
 }
