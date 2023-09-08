@@ -1,0 +1,58 @@
+services:
+  rabbitmq:
+    image: 'rabbitmq:3-management'
+    hostname: my-rabbit
+    container_name: some-rabbit
+    networks:
+      - idekanin_default
+    ports:
+      - '15672:15672'
+      - '5672:5672'
+
+  redis:
+    image: 'redis:7.2'
+    hostname: my-redis
+    container_name: some-redis
+    networks:
+      - idekanin_default
+
+  apiEndpoints:
+    image: "com.demo.website:api-endpoints"
+    hostname: "api-endpoints"
+    container_name: "api-endpoints"
+    ports:
+      - "9082:8080"
+    networks:
+      - idekanin_default
+    build:
+      context: ./api-endpoints
+    links:
+      - "rabbitmq:some-rabbit"
+      - "redis:some-redis"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  lookupworker1:
+    image: "com.demo.website:lookup-worker1"
+    hostname: "lookup-worker-1"
+    container_name: "lookup-worker-1"
+    ports:
+      - "9081:8080"
+    networks:
+      - idekanin_default
+    build:
+      context: ./lookup-worker1
+    links:
+      - "apiEndpoints:api-endpoints"
+      - "rabbitmq:some-rabbit"
+    depends_on:
+      wsBackend:
+        condition: service_healthy
+
+networks:
+  idekanin_default:
+    name: idekanin_default
+    external: true

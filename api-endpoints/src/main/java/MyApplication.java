@@ -27,11 +27,11 @@ public class MyApplication {
         this.kanin = kanin;
     }
 
-    @Path("hi")
+    @Path("ping")
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     public String entryPoint() throws URISyntaxException {
-        return "Hai there!";
+        return "api-endpoints: Hai there!";
     }
 
     @Path("api/resolver")
@@ -43,21 +43,5 @@ public class MyApplication {
     public Response idResolver() throws InterruptedException {
         ObjectNode jsonObject = kanin.postSimpleMessage("123", "reqCTX");
         return Response.ok(jsonObject.toString()).build();
-    }
-
-    @Path("api/retriever")
-    @GET
-    @Produces(MediaType.APPLICATION_JSON)
-    @Counted(name = "CUSTOM: Messaging service", absolute = true, tags={"purpose=total"})
-    @Operation(summary = "CUSTOM: Main messaging service",
-            description = "Main messaging service, may be slightly unstable at the moment. :-)")
-    public Response idRetriever() throws InterruptedException {
-        String jsonObject = kanin.getMessageFromExchange();
-
-        // register queue
-        // attach queue to an exchange
-        // get all messages and relay
-
-        return Response.ok(jsonObject).build();
     }
 }
