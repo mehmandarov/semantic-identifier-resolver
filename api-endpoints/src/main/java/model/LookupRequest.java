@@ -1,11 +1,14 @@
 package model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 @RegisterForReflection
 public class LookupRequest {
 
+    @JsonProperty("id")
     public String id;
+    @JsonProperty("context")
     public String context;
 
     /**
@@ -13,14 +16,14 @@ public class LookupRequest {
      */
     public LookupRequest() { }
 
-    public LookupRequest(String id, String ctx) {
+    public LookupRequest(String id, String context) {
         this.id = id;
-        this.context = ctx;
+        this.context = context;
     }
 
     @Override
     public String toString() {
-        return "Quote{" +
+        return "LookupRequest{" +
                 "id='" + id + '\'' +
                 ", context=" + context +
                 '}';
