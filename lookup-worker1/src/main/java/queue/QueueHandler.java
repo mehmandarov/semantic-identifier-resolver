@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rabbitmq.client.*;
 import jakarta.enterprise.context.ApplicationScoped;
+import model.LookupRequest;
 import utils.UUIDv5;
 
 import java.io.IOException;
@@ -128,5 +129,10 @@ public class QueueHandler {
         throw new RuntimeException(e);
     }
         return null;
+    }
+
+    public String processLookupRequest(LookupRequest lookupReq) {
+        System.out.println("*************Looked up ID: "+ lookupReq.id + " and context: " + lookupReq.context);
+        return lookupReq.toString();
     }
 }
