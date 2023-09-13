@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rabbitmq.client.*;
 import jakarta.enterprise.context.ApplicationScoped;
+import model.LookupQueueRequest;
 import utils.UUIDv5;
 
 import java.io.IOException;
@@ -129,4 +130,5 @@ public class QueueHandler {
     }
         return null;
     }
+
 }
