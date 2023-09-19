@@ -36,7 +36,10 @@
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-smallrye-reactive-messaging-rabbitmq</artifactId>
-      <version>3.3.2</version>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-redis-client</artifactId>
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>

@@ -6,7 +6,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import java.util.UUID;
 
 @RegisterForReflection
-public class LookupRequest {
+public class LookupQueueRequest {
 
     @JsonProperty("id")
     public String id;
@@ -20,9 +20,9 @@ public class LookupRequest {
     /**
      * Default constructor required for Jackson serializer
      */
-    public LookupRequest() { }
+    public LookupQueueRequest() { }
 
-    public LookupRequest(String id, String context, String requestIDStr, String requestHashStr) {
+    public LookupQueueRequest(String id, String context, String requestIDStr, String requestHashStr) {
         this.id = id;
         this.context = context;
         this.requestID = UUID.fromString(requestIDStr);
