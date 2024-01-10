@@ -1,50 +1,27 @@
 package cache;
 
-import io.quarkus.redis.datasource.value.ValueCommands;
-import jakarta.enterprise.context.ApplicationScoped;
+import com.arangodb.entity.ArangoDBVersion;
 
-import io.quarkus.redis.datasource.ReactiveRedisDataSource;
-import io.quarkus.redis.datasource.RedisDataSource;
-import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
-import io.smallrye.mutiny.Uni;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
 
-import java.util.List;
 
-@ApplicationScoped
+@Path("/cache")
 public class LookupResultsCacheService {
 
-    // This quickstart demonstrates both the imperative
-    // and reactive Redis data sources
-    // Regular applications will pick one of them.
+    private final ArangoService arangoService;
 
-    private final ReactiveKeyCommands<String> keyCommands;
-    private final ValueCommands<String, String> cacheValueCommands;
-
-    public LookupResultsCacheService(RedisDataSource ds, ReactiveRedisDataSource reactive) {
-        cacheValueCommands = ds.value(String.class);
-        keyCommands = reactive.key();
-
+    @Inject
+    public LookupResultsCacheService(ArangoService arangoService) {
+        this.arangoService = arangoService;
     }
 
-
-    public String get(String key) {
-        String value = cacheValueCommands.get(key);
-        if (value == null) {
-            return "";
-        }
-        return value;
-    }
-
-    public void set(String key, String value) {
-        cacheValueCommands.set(key, value);
-    }
-
-    Uni<Void> del(String key) {
-        return keyCommands.del(key)
-                .replaceWithVoid();
-    }
-
-    public Uni<List<String>> keys() {
-        return keyCommands.keys("*");
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public ArangoDBVersion getVersion() {
+        return arangoService.getVersion();
     }
 }

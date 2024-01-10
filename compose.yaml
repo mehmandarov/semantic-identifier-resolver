@@ -9,10 +9,14 @@ services:
       - '15672:15672'
       - '5672:5672'
 
-  redis:
-    image: 'redis:7.2'
-    hostname: my-redis
-    container_name: some-redis
+  arangodb:
+    image: 'arangodb:3.11.6'
+    hostname: my-arangodb
+    container_name: some-arangodb
+    environment:
+      - ARANGO_ROOT_PASSWORD=${TOP_SECRET}
+    env_file:
+      - api-endpoints/.env.arangodb
     networks:
       - idekanin_default
 
@@ -28,7 +32,7 @@ services:
       context: ./api-endpoints
     links:
       - "rabbitmq:some-rabbit"
-      - "redis:some-redis"
+      - "arangodb:some-arangodb"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s

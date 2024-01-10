@@ -1,12 +1,16 @@
+import cache.ArangoService;
 import cache.LookupResultsCacheService;
-import io.smallrye.mutiny.Uni;
+import com.arangodb.entity.ArangoDBVersion;
 import model.LookupQueueRequest;
 import model.LookupRequestHttpPOST;
-import model.LookupResult;
 import utils.UUIDv5;
 
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.core.MediaType;
 
 import org.eclipse.microprofile.metrics.annotation.Counted;
@@ -15,7 +19,6 @@ import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 
 import java.net.URISyntaxException;
-import java.util.List;
 import java.util.UUID;
 
 @Path("/api")
@@ -23,6 +26,9 @@ public class MyApplication {
 
     @Inject
     LookupResultsCacheService lookupCache;
+
+    @Inject
+    ArangoService arangoService;
 
     @Channel("idMapper")
     Emitter<LookupQueueRequest> lookupRequesttEmitter;
@@ -50,6 +56,14 @@ public class MyApplication {
     }
 
     @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public ArangoDBVersion getVersion() {
+        return arangoService.getVersion();
+    }
+
+    /*
+
+    @GET
     @Path("/cache/{key}")
     @Produces(MediaType.APPLICATION_JSON)
     public LookupResult get(String key) {
@@ -71,4 +85,6 @@ public class MyApplication {
     public Uni<List<String>> keys() {
         return lookupCache.keys();
     }
+
+    */
 }
