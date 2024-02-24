@@ -1,14 +1,23 @@
 package model;
 
-public class LookupResult {
-    public String key;
-    public String value;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-    public LookupResult(String key, String value) {
-        this.key = key;
-        this.value = value;
+import java.util.ArrayList;
+import java.util.UUID;
+
+public class LookupResult {
+
+    @JsonProperty("requestID")
+    public UUID requestID;
+    @JsonProperty("requestHash")
+    public UUID requestHash;
+    public ArrayList<LookupResultElement> lookupResult;
+
+    LookupResult(){
+        lookupResult = new ArrayList<LookupResultElement>();
     }
 
-    public LookupResult() {
+    void add(LookupResultElement element){
+        lookupResult.add(element);
     }
 }

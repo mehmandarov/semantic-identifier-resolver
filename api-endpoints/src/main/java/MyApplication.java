@@ -44,7 +44,7 @@ public class MyApplication {
     @POST
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Counted(name = "CUSTOM: Messaging service", absolute = true, tags={"purpose=total"})
+    @Counted(name = "ID lookup service", absolute = true, tags={"purpose=//TODO"})
     @Operation(summary = "CUSTOM: Main messaging service",
             description = "Main messaging service, may be slightly unstable at the moment. :-)")
     public LookupQueueRequest idResolver(LookupRequestHttpPOST request) throws InterruptedException {
