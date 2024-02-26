@@ -1,16 +1,14 @@
 import cache.ArangoService;
 import cache.LookupResultsCacheService;
 import com.arangodb.entity.ArangoDBVersion;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Response;
 import model.LookupQueueRequest;
 import model.LookupRequestHttpPOST;
+import model.LookupResult;
 import utils.UUIDv5;
 
 import jakarta.inject.Inject;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
 import jakarta.ws.rs.core.MediaType;
 
 import org.eclipse.microprofile.metrics.annotation.Counted;
@@ -37,7 +35,7 @@ public class MyApplication {
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     public String entryPoint() throws URISyntaxException {
-        return "api-endpoints: Hai there!";
+        return "api-endpoints: Hai there! PONG.";
     }
 
     @Path("lookup")
@@ -56,35 +54,48 @@ public class MyApplication {
     }
 
     @GET
+    @Path("/internals/arangodb")
     @Produces(MediaType.APPLICATION_JSON)
     public ArangoDBVersion getVersion() {
         return arangoService.getVersion();
     }
 
-    /*
 
     @GET
     @Path("/cache/{key}")
     @Produces(MediaType.APPLICATION_JSON)
-    public LookupResult get(String key) {
-        return new LookupResult(key, lookupCache.get(key));
+    public Response get(String key) {
+        /*
+        if(uuid == null || uuid.trim().length() == 0) {
+            return Response.serverError().entity("UUID cannot be blank").build();
+        }
+        Entity entity = service.getById(uuid);
+        if(entity == null) {
+            return Response.status(Response.Status.NOT_FOUND).entity("Entity not found for UUID: " + uuid).build();
+        }
+        String json = //convert entity to json
+        return Response.ok(json, MediaType.APPLICATION_JSON).build();
+         */
+        return Response.status(Response.Status.NOT_IMPLEMENTED).entity("Not implemented yet.").build();
     }
 
-
+    /*
     @PUT
     @Path("/cache/{key}")
     @Consumes(MediaType.TEXT_PLAIN)
     @Produces(MediaType.APPLICATION_JSON)
     public void set(@PathParam("key") String key, String value) {
+        //set HTTP code to "201 Created"
         lookupCache.set(key, value);
     }
+    */
 
     @GET
     @Path("/cache/all")
     @Produces(MediaType.APPLICATION_JSON)
-    public Uni<List<String>> keys() {
-        return lookupCache.keys();
+    public Response keys() {
+        return Response.status(Response.Status.NOT_IMPLEMENTED).entity("Not implemented yet.").build();
+
     }
 
-    */
 }

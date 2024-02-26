@@ -15,8 +15,9 @@ public class TempQueueImplementation {
 
     public static void main(String[] args) throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
 
+        // TODO: Move this to config file
+        factory.setHost("localhost");
         factory.setUsername("guest");
         factory.setPassword("guest");
         factory.setPort(5672);
