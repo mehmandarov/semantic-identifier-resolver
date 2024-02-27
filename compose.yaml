@@ -59,4 +59,4 @@ services:
 networks:
   idekanin_default:
     name: idekanin_default
-    external: true
+    external: false

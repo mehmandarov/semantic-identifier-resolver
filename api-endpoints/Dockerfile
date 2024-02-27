@@ -77,10 +77,9 @@
 ###
 
 # Step 1: Build the code using regular maven
-FROM maven:3.9.5-eclipse-temurin-21 as maven
+FROM maven:3.9.6-eclipse-temurin-21 as maven
 COPY pom.xml /home/app/
 WORKDIR /home/app
-RUN mvn verify -B --fail-never
 COPY src /home/app/src
 RUN mvn package
 

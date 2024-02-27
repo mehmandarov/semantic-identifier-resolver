@@ -42,9 +42,9 @@ public class MyApplication {
     @POST
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Counted(name = "ID lookup service", absolute = true, tags={"purpose=//TODO"})
-    @Operation(summary = "CUSTOM: Main messaging service",
-            description = "Main messaging service, may be slightly unstable at the moment. :-)")
+    @Counted(name = "ID lookup service", absolute = true, tags={"purpose=ID_lookup"})
+    @Operation(summary = "CUSTOM: Main lookup service",
+            description = "Main lookup service, with a key and a context provided. No filtering.")
     public LookupQueueRequest idResolver(LookupRequestHttpPOST request) throws InterruptedException {
         UUID correlationID = UUID.randomUUID();
         UUID requestHash = UUIDv5.fromUTF8(request.id.toUpperCase()+"_"+request.context.toUpperCase());
