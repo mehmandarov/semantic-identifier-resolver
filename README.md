@@ -18,12 +18,21 @@
 └── pom.xml
 ```
 
-# Fix for Podman on MacOS
-podman machine stop && ulimit -n unlimited && podman machine start
+# Development
+
+## Important URLs
+### RabbitMQ
+* Management interface: `http://localhost:15672/` (development only: `guest`/`guest`)
+
+## Local install and run
+
+1. Install [Colima](https://github.com/abiosoft/colima) and `docker` client + `docker compose` plug-in
+2. Run `docker compose -f compose.yaml -p idekanin-resolver up -d`
 
 
+## Manual start of services
 ### Start RabbitMQ
-podman run -d --hostname my-rabbit --name some-rabbit -p 15672:15672 -p5672:5672 rabbitmq:3-management
+docker run -d --hostname my-rabbit --name some-rabbit -p 15672:15672 -p5672:5672 rabbitmq:3-management
 
 ### Start ArangoDB
-podman run -d --hostname my-arangodb --name some-arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=openSesame arangodb:3.11.6
+docker run -d --hostname my-arangodb --name some-arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=openSesame arangodb:3.11.6

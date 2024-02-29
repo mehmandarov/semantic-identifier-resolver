@@ -53,7 +53,7 @@ services:
       - "apiEndpoints:api-endpoints"
       - "rabbitmq:some-rabbit"
     depends_on:
-      wsBackend:
+      apiEndpoints:
         condition: service_healthy
 
 networks:
