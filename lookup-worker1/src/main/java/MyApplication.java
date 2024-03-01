@@ -32,7 +32,7 @@ public class MyApplication{
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     public String entryPoint() throws URISyntaxException {
-        return "lookup-worker1: Hai there!";
+        return "lookup-worker1: Hai there!" + kanin;
     }
 
     @Incoming("idMapper")

@@ -17,9 +17,9 @@ public class TempQueueImplementation {
         ConnectionFactory factory = new ConnectionFactory();
 
         // TODO: Move this to config file
-        factory.setHost("localhost");
-        factory.setUsername("guest");
-        factory.setPassword("guest");
+        factory.setHost("some-rabbit");
+        factory.setUsername("kanin");
+        factory.setPassword("kanin");
         factory.setPort(5672);
 
         try (Connection connection = factory.newConnection();

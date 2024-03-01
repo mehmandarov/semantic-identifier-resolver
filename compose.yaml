@@ -3,6 +3,8 @@ services:
     image: 'rabbitmq:3-management'
     hostname: my-rabbit
     container_name: some-rabbit
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro  # Mount config file (read-only)
     networks:
       - idekanin_default
     ports:
