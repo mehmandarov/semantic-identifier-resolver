@@ -25,8 +25,8 @@ public class QueueHandler {
     QueueHandler(){
         factory = new ConnectionFactory();
         // "guest"/"guest" by default, limited to localhost connections
-        factory.setUsername("kanin");
-        factory.setPassword("kanin");
+        factory.setUsername("guest");
+        factory.setPassword("guest");
         //factory.setVirtualHost(virtualHost);
         factory.setHost("my-rabbit");
         factory.setPort(5672);
