@@ -80,8 +80,9 @@
 FROM maven:3.9.6-eclipse-temurin-21 as maven
 COPY pom.xml /home/app/
 WORKDIR /home/app
+RUN mvn verify -B --fail-never
 COPY src /home/app/src
-RUN mvn package
+RUN mvn package -Dquarkus.profile=dev
 
 
 # Step 2: Get the app up and running
@@ -97,5 +98,9 @@ COPY --chown=185 --from=maven /home/app/target/quarkus-app/quarkus/ /deployments
 
 EXPOSE 8080
 USER 185
-ENV JAVA_OPTS="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+ENV JAVA_OPTS_APPEND="-Dquarkus.profile=dev -Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
+
+ENV QUARKUS_LAUNCH_DEVMODE=true
+
+ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]

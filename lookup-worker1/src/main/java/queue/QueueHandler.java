@@ -22,15 +22,6 @@ public class QueueHandler {
     String queueName = "queue_tag_lookup";
     ObjectNode json = null;
 
-    QueueHandler(){
-        factory = new ConnectionFactory();
-        // "guest"/"guest" by default, limited to localhost connections
-        factory.setUsername("guest");
-        factory.setPassword("guest");
-        //factory.setVirtualHost(virtualHost);
-        factory.setHost("my-rabbit");
-        factory.setPort(5672);
-    }
 
     public ObjectNode postSimpleMessage(String id, String ctx){
 
