@@ -18,9 +18,11 @@ services:
     environment:
       - ARANGO_ROOT_PASSWORD=${TOP_SECRET}
     env_file:
-      - api-endpoints/.env.arangodb
+      - .env.arangodb
     networks:
       - idekanin_default
+    ports:
+      - '8529:8529'
 
   apiEndpoints:
     image: "com.demo.website:api-endpoints"
