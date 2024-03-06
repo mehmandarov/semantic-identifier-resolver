@@ -13,6 +13,15 @@ You can run your application in dev mode that enables live coding using:
 
 > **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at http://localhost:8080/q/dev/.
 
+### Running the application with remote reloading inside Docker
+
+This project has a `dev` profile with its own Dockerfile (`DEV.Dockerfile`) and separate Quarkus `dev` profile.
+Build the code and run the container using `docker compose` or `docker` commands, then connect to your container from the IDE using following command:
+
+```shell script
+./mvnw quarkus:remote-dev -Dquarkus.profile=dev
+```
+
 ### Packaging and running the application
 
 The application can be packaged using:

@@ -20,9 +20,23 @@
 
 # Development
 
-## Important URLs
-### RabbitMQ
-* Management interface: `http://localhost:15672/` (development only: `guest`/`guest`)
+## URLs
+
+All containers, ports and networks are defined in the [compose.yaml](compose.yaml) file.
+
+| Service Name                    | Container Name  | URL                     | Description                       |
+|---------------------------------|-----------------|-------------------------|-----------------------------------|
+| API Gateway                     | api-endpoints   | http://localhost:9081/  |                                   | 
+| Lookup Worker 1                 | lookup-worker-1 | http://localhost:9085/  |                                   |
+| RabbitMQ (Management Interface) | some-rabbit     | http://localhost:15672/ | Development only: `guest`/`guest` |
+| RabbitMQ (Queue)                | some-rabbit     | http://localhost:5672/  |                                   |
+| ArangoDB (Cache)                | some-arangodb   | http://localhost:8529/  |                                   |
+
+
+## Config files
+
+* RabbitMQ: [rabbitmq.conf](rabbitmq.conf)
+* ArangoDB: [.env.arangodb](.env.arangodb)
 
 ## Local install and run
 
