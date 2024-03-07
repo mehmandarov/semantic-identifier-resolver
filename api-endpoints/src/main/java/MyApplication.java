@@ -38,6 +38,22 @@ public class MyApplication {
         return "api-endpoints: Hai there! PONG.";
     }
 
+    @Path("mock_lookup")
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Counted(name = "MOCK: ID lookup service", absolute = true, tags={"purpose=ID_lookup_mock"})
+    @Operation(summary = "CUSTOM: *MOCK* lookup service. DEBUG ONLY.",
+            description = "*MOCK* lookup service, with a key and a context provided. No filtering.")
+    public LookupQueueRequest mock_idResolver() throws InterruptedException {
+        // Mock a request object
+        LookupRequestHttpPOST request = new LookupRequestHttpPOST();
+        request.id = "A-24HA001";
+        request.context = "TAG";
+        // Send as a real request
+        return idResolver(request);
+    }
+
     @Path("lookup")
     @POST
     @Produces(MediaType.APPLICATION_JSON)
