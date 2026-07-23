@@ -17,6 +17,14 @@ import java.util.UUID;
 public class QueueHandler {
 
 
+    /**
+     * The processing step of the worker: the plug-in slot where the resolution
+     * logic goes. The logic is use-case specific and has to be implemented
+     * separately for each worker, encapsulating one source or one set of rules
+     * (e.g. semantic lifting of tag numbers, or a key-value mapping for one
+     * system). Version 1 logs the request and returns it unchanged; it does
+     * not write results back to the cache yet.
+     */
     public String processLookupRequest(LookupQueueRequest lookupReq) {
         System.out.println("*************Looked up ID: "+ lookupReq.id + " and context: " + lookupReq.context);
         return lookupReq.toString();

@@ -74,9 +74,10 @@ curl -i http://localhost:9081/api/cache/caebb70d-cf1e-5176-afaa-ca094a9d49ac
 ```
 
 The intake records each request as *pending* in the cache before publishing, so the
-results URL resolves immediately. Version 1 workers do not yet write results back,
-so completed lookups still report `pending`; the fan-in write is the remaining
-placeholder.
+results URL resolves immediately. The worker's processing step is the plug-in slot:
+the resolution logic is use-case specific and is implemented per worker. Version 1
+workers log the request and acknowledge; none writes results back yet, so lookups
+still report `pending`; the fan-in write is the remaining placeholder.
 
 
 ## Manual start of services

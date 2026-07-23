@@ -26,6 +26,9 @@ public class MyApplication{
     @Channel("idMapperReplyAck")
     Emitter<String> emitterForAck;
 
+    @Inject
+    QueueHandler queueHandler;
+
     @Path("api/ping")
     @GET
     @Produces(MediaType.TEXT_PLAIN)
@@ -41,13 +44,10 @@ public class MyApplication{
             description = "Lookup a certain ID")
     public void idRetriever(JsonObject obj) throws InterruptedException {
         LookupQueueRequest lookupReq = obj.mapTo(LookupQueueRequest.class);
-        // Change the response object to LookupRequest?
-        //String jsonObject = kanin.processLookupRequest(lookupReq);
+        // Processing step: the plug-in slot for the use-case specific
+        // resolution logic of this worker (see QueueHandler).
+        queueHandler.processLookupRequest(lookupReq);
 
-        // register queue
-        // attach queue to an exchange
-        // get all messages and relay
-        // {"id": 123, "context": "TAG"}
         final OutgoingRabbitMQMetadata metadata = new OutgoingRabbitMQMetadata.Builder()
                 .withHeader("APP_NAME", "lookup-worker-1")
                 .withRoutingKey("id_lookup_akk")
