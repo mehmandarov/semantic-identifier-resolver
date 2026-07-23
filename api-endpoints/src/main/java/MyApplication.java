@@ -1,8 +1,11 @@
 import cache.ArangoService;
 import cache.LookupResultsCacheService;
 import com.arangodb.entity.ArangoDBVersion;
+import com.arangodb.entity.BaseDocument;
 import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 import model.LookupQueueRequest;
 import model.LookupRequestHttpPOST;
 import model.LookupResult;
@@ -11,12 +14,16 @@ import utils.UUIDv5;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 
-import org.eclipse.microprofile.metrics.annotation.Counted;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
+import io.micrometer.core.annotation.Counted;
 
+import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Path("/api")
@@ -42,31 +49,50 @@ public class MyApplication {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Counted(name = "MOCK: ID lookup service", absolute = true, tags={"purpose=ID_lookup_mock"})
+    @Counted(value = "id_lookup_service_mock", extraTags = {"purpose", "ID_lookup_mock"})
     @Operation(summary = "CUSTOM: *MOCK* lookup service. DEBUG ONLY.",
             description = "*MOCK* lookup service, with a key and a context provided. No filtering.")
-    public LookupQueueRequest mock_idResolver() throws InterruptedException {
+    public Response mock_idResolver(@Context UriInfo uriInfo) throws InterruptedException {
         // Mock a request object
         LookupRequestHttpPOST request = new LookupRequestHttpPOST();
         request.id = "A-24HA001";
         request.context = "TAG";
         // Send as a real request
-        return idResolver(request);
+        return idResolver(request, uriInfo);
     }
 
     @Path("lookup")
     @POST
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Counted(name = "ID lookup service", absolute = true, tags={"purpose=ID_lookup"})
+    @Counted(value = "id_lookup_service", extraTags = {"purpose", "ID_lookup"})
     @Operation(summary = "CUSTOM: Main lookup service",
-            description = "Main lookup service, with a key and a context provided. No filtering.")
-    public LookupQueueRequest idResolver(LookupRequestHttpPOST request) throws InterruptedException {
+            description = "Main lookup service, with a key and a context provided. No filtering. " +
+                    "Accepts the lookup for asynchronous processing: answers 202 with the enriched " +
+                    "request as a receipt, and a Location header pointing at the results endpoint.")
+    @APIResponse(responseCode = "202", description = "Request accepted for processing; the Location header points at /api/cache/{requestHash}")
+    @APIResponse(responseCode = "400", description = "Missing or blank id or context")
+    public Response idResolver(LookupRequestHttpPOST request, @Context UriInfo uriInfo) throws InterruptedException {
+        if (request == null || isBlank(request.id) || isBlank(request.context)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Both 'id' and 'context' must be provided and non-blank."))
+                    .build();
+        }
         UUID correlationID = UUID.randomUUID();
         UUID requestHash = UUIDv5.fromUTF8(request.id.toUpperCase()+"_"+request.context.toUpperCase());
         LookupQueueRequest lookupQueueRequest = new LookupQueueRequest(request.id, request.context, correlationID.toString(), requestHash.toString());
+
+        // Record the request as pending before publishing, so the results URL
+        // answers polls from the moment the receipt is issued.
+        arangoService.recordPendingRequest(lookupQueueRequest);
+
+        System.out.println("*** SENDING A LOOKUP REQUEST ***");
         lookupRequesttEmitter.send(lookupQueueRequest);
-        return lookupQueueRequest;
+
+        URI resultsUrl = uriInfo.getBaseUriBuilder()
+                .path("api").path("cache").path(requestHash.toString())
+                .build();
+        return Response.accepted(lookupQueueRequest).location(resultsUrl).build();
     }
 
     @GET
@@ -80,19 +106,49 @@ public class MyApplication {
     @GET
     @Path("/cache/{key}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response get(String key) {
-        /*
-        if(uuid == null || uuid.trim().length() == 0) {
-            return Response.serverError().entity("UUID cannot be blank").build();
+    @Operation(summary = "CUSTOM: Results endpoint",
+            description = "Reports the state of a lookup request by its request hash. " +
+                    "The response code reflects the outcome: 200 done, 202 pending, " +
+                    "404 unknown request hash, 500 worker-reported failure.")
+    @APIResponse(responseCode = "200", description = "Lookup done; the body carries the results")
+    @APIResponse(responseCode = "202", description = "Lookup accepted but still pending")
+    @APIResponse(responseCode = "400", description = "Blank request hash")
+    @APIResponse(responseCode = "404", description = "Unknown request hash")
+    @APIResponse(responseCode = "500", description = "Lookup failed on the server side; the body carries the detail")
+    public Response get(@PathParam("key") String key) {
+        if (isBlank(key)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "The request hash must be provided."))
+                    .build();
         }
-        Entity entity = service.getById(uuid);
-        if(entity == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity("Entity not found for UUID: " + uuid).build();
+        BaseDocument doc = arangoService.getRequestDocument(key.trim());
+        if (doc == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "No lookup request found for request hash: " + key))
+                    .build();
         }
-        String json = //convert entity to json
-        return Response.ok(json, MediaType.APPLICATION_JSON).build();
-         */
-        return Response.status(Response.Status.NOT_IMPLEMENTED).entity("Not implemented yet.").build();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("requestID", doc.getAttribute("requestID"));
+        body.put("requestHash", doc.getKey());
+        body.put("id", doc.getAttribute("id"));
+        body.put("context", doc.getAttribute("context"));
+        String status = String.valueOf(doc.getAttribute("status"));
+        body.put("status", status);
+        switch (status) {
+            case "done":
+                body.put("results", doc.getAttribute("results"));
+                return Response.ok(body).build();
+            case "pending":
+                return Response.accepted(body).build();
+            case "error":
+            default:
+                body.put("detail", doc.getAttribute("detail"));
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(body).build();
+        }
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     /*

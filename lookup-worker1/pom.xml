@@ -18,7 +18,6 @@
     <compiler-plugin.version>3.15.0</compiler-plugin.version>
     <surefire-plugin.version>3.5.6</surefire-plugin.version>
     <quarkus.platform.version>3.37.3</quarkus.platform.version>
-    <quarkus-smallrye-reactive-messaging-rabbitmq.version>3.15.7</quarkus-smallrye-reactive-messaging-rabbitmq.version>
     <quarkus-microprofile.version>3.4.1</quarkus-microprofile.version>
   </properties>
   <dependencyManagement>
@@ -40,8 +39,13 @@
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-smallrye-reactive-messaging-rabbitmq</artifactId>
-      <version>${quarkus-smallrye-reactive-messaging-rabbitmq.version}</version>
+      <artifactId>quarkus-messaging-rabbitmq</artifactId>
+      <version>${quarkus.platform.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+      <version>${quarkus.platform.version}</version>
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>

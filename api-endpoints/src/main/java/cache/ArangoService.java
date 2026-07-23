@@ -3,10 +3,12 @@ package cache;
 import com.arangodb.ArangoDB;
 import com.arangodb.ArangoDBException;
 import com.arangodb.entity.ArangoDBVersion;
+import com.arangodb.entity.BaseDocument;
 
 import com.arangodb.entity.CollectionEntity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import model.LookupQueueRequest;
 
 @ApplicationScoped
 public class ArangoService {
@@ -45,33 +47,42 @@ public class ArangoService {
         return arango.getVersion();
     }
 
-    public void createDocument(String key){
-        /*
-        BaseDocument myObject = new BaseDocument();
-        myObject.setKey("myKey");
-        myObject.addAttribute("a", "Foo");
-        myObject.addAttribute("b", 42);
+    /**
+     * Records a freshly accepted lookup request in the cache with status "pending",
+     * keyed by the request hash, so the results endpoint can answer polls from the
+     * moment the request is accepted. If a document already exists for the hash,
+     * it is left as-is: repeated lookups are idempotent and the cached state stands.
+     */
+    public void recordPendingRequest(LookupQueueRequest request) {
+        String key = request.requestHash.toString();
         try {
-          arangoDB.db(dbName).collection(collectionName).insertDocument(myObject);
-          System.out.println("Document created");
-        } catch(ArangoDBException e) {
-          System.err.println("Failed to create document. " + e.getMessage());
+            if (arango.db(dbName).collection(dbCollection).documentExists(key)) {
+                System.out.println("Request already recorded, leaving cache document as-is: " + key);
+                return;
+            }
+            BaseDocument doc = new BaseDocument(key);
+            doc.addAttribute("requestID", request.requestID.toString());
+            doc.addAttribute("id", request.id);
+            doc.addAttribute("context", request.context);
+            doc.addAttribute("status", "pending");
+            arango.db(dbName).collection(dbCollection).insertDocument(doc);
+            System.out.println("Recorded pending request: " + key);
+        } catch (ArangoDBException e) {
+            System.err.println("Failed to record pending request: " + key + "; " + e.getMessage());
         }
-        * */
-
     }
 
-    public void updateDocument(){
-        /*
-
-        myObject.addAttribute("c", "Bar");
+    /**
+     * Reads the cache document for a lookup request by its request hash.
+     * Returns null if no document exists for the key.
+     */
+    public BaseDocument getRequestDocument(String key) {
         try {
-          arangoDB.db(dbName).collection(collectionName).updateDocument("myKey", myObject);
+            return arango.db(dbName).collection(dbCollection).getDocument(key, BaseDocument.class);
         } catch (ArangoDBException e) {
-          System.err.println("Failed to update document. " + e.getMessage());
+            System.err.println("Failed to read request document: " + key + "; " + e.getMessage());
+            return null;
         }
-
-        * */
     }
 
 }

@@ -28,6 +28,8 @@ services:
     image: "com.demo.website:api-endpoints"
     hostname: "api-endpoints"
     container_name: "api-endpoints"
+    environment:
+      - CACHE_PASSWORD=${TOP_SECRET}
     ports:
       - "9081:8080"
     networks:

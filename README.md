@@ -41,7 +41,42 @@ All containers, ports and networks are defined in the [compose.yaml](compose.yam
 ## Local install and run
 
 1. Install [Colima](https://github.com/abiosoft/colima) and `docker` client + `docker compose` plug-in
-2. Run `docker compose -f compose.yaml -p idekanin-resolver up -d`
+2. Run `docker compose --env-file .env.arangodb -f compose.yaml -p idekanin-resolver up -d`
+
+Note: the `--env-file` flag is required so that `${TOP_SECRET}` in `compose.yaml` is
+interpolated for both the ArangoDB root password and the gateway's cache credentials
+(`env_file:` entries alone do not feed Compose variable substitution).
+
+## API endpoints
+
+The gateway implements the asynchronous request-reply pattern: `POST` answers
+`202 Accepted` with a `Location` header pointing to a results URL, which the client
+polls until the lookup completes.
+
+| Method | Path                       | Codes                                                                                                                    |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| POST   | `/api/lookup`              | `202` accepted + `Location`; `400` blank `id`/`context`                                                                  |
+| POST   | `/api/lookup/mock`         | Same as above, without publishing to the queue                                                                           |
+| GET    | `/api/cache/{requestHash}` | `200` done (with `results`); `202` pending; `500` error (with `detail`); `404` unknown hash; `400` blank key             |
+| GET    | `/api/lookup/ping`         | `200` liveness check                                                                                                     |
+
+Example:
+
+```shell
+curl -i -X POST http://localhost:9081/api/lookup \
+  -H 'Content-Type: application/json' \
+  -d '{"id": "A-24HA001", "context": "TAG"}'
+# HTTP/1.1 202 Accepted
+# Location: http://localhost:9081/api/cache/caebb70d-cf1e-5176-afaa-ca094a9d49ac
+
+curl -i http://localhost:9081/api/cache/caebb70d-cf1e-5176-afaa-ca094a9d49ac
+# HTTP/1.1 202 Accepted   (status: pending)
+```
+
+The intake records each request as *pending* in the cache before publishing, so the
+results URL resolves immediately. Version 1 workers do not yet write results back,
+so completed lookups still report `pending`; the fan-in write is the remaining
+placeholder.
 
 
 ## Manual start of services
