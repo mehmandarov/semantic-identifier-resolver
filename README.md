@@ -57,7 +57,7 @@ polls until the lookup completes.
 |--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | POST   | `/api/lookup`              | `202` accepted + `Location`; `400` blank `id`/`context`                                                                  |
 | GET    | `/api/cache/{requestHash}` | `200` done (with `results`); `202` pending or in progress (with `claimedBy`); `500` error (with `detail`); `504` timed out; `404` unknown hash; `400` blank key |
-| GET    | `/api/lookup/ping`         | `200` liveness check                                                                                                     |
+| GET    | `/api/ping`                | `200` liveness check                                                                                                     |
 
 Example:
 
@@ -71,6 +71,12 @@ curl -i -X POST http://localhost:9081/api/lookup \
 curl -i http://localhost:9081/api/cache/caebb70d-cf1e-5176-afaa-ca094a9d49ac
 # HTTP/1.1 202 Accepted   (status: pending)
 ```
+
+Alternatively, [http/api-requests.http](http/api-requests.http) walks the whole API in the
+IntelliJ HTTP Client (or VS Code REST Client): liveness checks, the full
+lookup flow with the `requestHash` captured automatically for the polling
+request, and the 400/404 error cases. Hosts are defined per environment in
+[http/http-client.env.json](http/http-client.env.json) — pick `dev` when prompted.
 
 The intake records each request as *pending* in the cache before publishing, so the
 results URL resolves immediately. The worker's processing step is the plug-in slot:
