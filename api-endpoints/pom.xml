@@ -83,6 +83,21 @@
       <groupId>io.rest-assured</groupId>
       <artifactId>json-schema-validator</artifactId>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <!-- json-schema-core drags in rhino 1.7.7.2 (CVE-2025-66453);
+               a patched version is pinned explicitly below. -->
+          <groupId>org.mozilla</groupId>
+          <artifactId>rhino</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.mozilla</groupId>
+      <artifactId>rhino</artifactId>
+      <!-- 1.8.1 is the first 1.8.x with the CVE-2025-66453 fix (toFixed DoS). -->
+      <version>1.8.1</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
