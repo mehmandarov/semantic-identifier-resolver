@@ -37,15 +37,15 @@ public class SimulatedWorker {
         // Announce the pick-up first, so the gateway can record who claimed it.
         statusEmitter.send(statusEvent("claimed", req));
 
-        // Echo the input tuple as a single-element result with the identity
-        // relationship, matching the production worker's v1 behaviour, and
-        // report the lookup as done.
-        JsonArray results = new JsonArray()
+        // Echo the input tuple as the worker's reply — a single element with
+        // the identity relationship, matching the production worker's v1
+        // behaviour — and report the lookup as done.
+        JsonArray reply = new JsonArray()
                 .add(new JsonObject()
                         .put("id", req.id)
                         .put("context", req.context)
                         .put("relationship", "same-as"));
-        statusEmitter.send(statusEvent("done", req).put("results", results));
+        statusEmitter.send(statusEvent("done", req).put("reply", reply));
     }
 
     private static JsonObject statusEvent(String type, LookupQueueRequest req) {

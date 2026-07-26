@@ -80,12 +80,13 @@ request, and the 400/404 error cases. Hosts are defined per environment in
 
 The intake records each request as *pending* in the cache before publishing, so the
 results URL resolves immediately. The worker's processing step is the plug-in slot:
-the resolution logic is use-case specific and is implemented per worker. Each result
-element carries `{id, context, relationship}`, where `relationship` states how the
-returned identifier relates to the input identifier, per the Paper I interface (e.g.
-`part-of`, `has-part` — not only pure equivalence mappings). The version 1 worker
-implements the simplest case, echoing the input tuple as its result with the identity
-relationship `same-as`.
+the resolution logic is use-case specific and is implemented per worker. Results are
+grouped per answering worker: each entry in `results` is a `{worker, at, reply}`
+block, and each reply element carries `{id, context, relationship}`, where
+`relationship` states how the returned identifier relates to the input identifier,
+per the Paper I interface (e.g. `part-of`, `has-part` — not only pure equivalence
+mappings). The version 1 worker implements the simplest case, echoing the input
+tuple as its reply with the identity relationship `same-as`.
 
 ## Lookup lifecycle, worker tracking and timeout
 
@@ -105,10 +106,14 @@ Flow of one request:
 3. The gateway applies the claim: status `pending` → `in_progress`, and the
    `{worker, at}` pair is appended to the document's `claimedBy` list — so a
    poll shows exactly which worker(s) picked the request up.
-4. The worker publishes `done` (with `results`, a list of
+4. The worker publishes `done` (with `reply`, a list of
    `{id, context, relationship}` elements) or `failed` (with `detail`).
-5. The gateway applies the outcome: `done` (results + `resolvedBy`/`resolvedAt`)
-   or `error`. A failure never overwrites results another worker already
+5. The gateway applies the outcome: each worker's reply is merged into the
+   cache document's `results` as a `{worker, at, reply}` block keyed by
+   worker name — replies from several workers converge without overwriting
+   each other, and a redelivered reply replaces the worker's previous block.
+   `resolvedBy`/`resolvedAt` track the latest reply. A failure marks the
+   lookup `error` but never overwrites results another worker already
    delivered; claims never regress a finished lookup.
 6. A scheduled sweep in the gateway marks lookups still `pending`/`in_progress`
    after `lookup.timeout-seconds` (measured from `createdAt`) as `timed-out` —
@@ -176,8 +181,8 @@ gateway — worker-originated fields arrive as status events):
 | `status`      | `pending` / `in_progress` / `done` / `error` / `timed-out` | gateway       | Current lifecycle state                    |
 | `createdAt`   | number (epoch s)| gateway on POST (or event on recreate)              | **TTL anchor** and timeout anchor — never overwritten by updates |
 | `claimedBy`   | list of `{worker, at}` | `claimed` events                             | Pick-up history: which worker(s) claimed the request |
-| `results`     | list of `{id, context, relationship}` | `done` events                 | Resolved results returned by `GET`         |
-| `resolvedBy`  | string          | `done`/`failed` events                              | Provenance: which worker answered          |
+| `results`     | list of `{worker, at, reply}` | `done` events                 | One block per answering worker; `reply` is that worker's resolved elements `{id, context, relationship}` |
+| `resolvedBy`  | string          | `done`/`failed` events                              | Provenance: which worker answered last     |
 | `resolvedAt`  | string (ISO instant) | `done`/`failed` events                         | Provenance: when it answered               |
 | `detail`      | string          | `failed` events or the timeout sweep                | Human-readable failure reason              |
 
@@ -220,7 +225,8 @@ The `api-endpoints` module ships a full end-to-end test suite
 (`e2e.EndToEndLookupIT`) that exercises the whole pipeline in a single JVM:
 `POST /api/lookup` → RabbitMQ → in-test worker consumer → status events →
 gateway status consumer → ArangoDB → `GET /api/cache/{hash}` → cached repeat
-lookup, plus the in-progress, timed-out and accept-late paths.
+lookup, plus the in-progress, timed-out, accept-late and multi-worker
+fan-in paths.
 
 The suite uses [Testcontainers](https://java.testcontainers.org/) to spin up
 real `rabbitmq:3-management` and `arangodb:3.11.6` containers, so a working

@@ -84,9 +84,12 @@ class EndToEndLookupIT {
                         .body("id", equalTo("A-24HA001"))
                         .body("context", equalTo("TAG"))
                         .body("results.size()", equalTo(1))
-                        .body("results[0].id", equalTo("A-24HA001"))
-                        .body("results[0].context", equalTo("TAG"))
-                        .body("results[0].relationship", equalTo("same-as"))
+                        .body("results[0].worker", equalTo(SimulatedWorker.WORKER_NAME))
+                        .body("results[0].at", notNullValue())
+                        .body("results[0].reply.size()", equalTo(1))
+                        .body("results[0].reply[0].id", equalTo("A-24HA001"))
+                        .body("results[0].reply[0].context", equalTo("TAG"))
+                        .body("results[0].reply[0].relationship", equalTo("same-as"))
                         .body("resolvedBy", equalTo(SimulatedWorker.WORKER_NAME))
                         // Pick-up tracking: the claim event was applied too.
                         .body("claimedBy.size()", greaterThanOrEqualTo(1))
@@ -276,15 +279,48 @@ class EndToEndLookupIT {
         doc.addAttribute("createdAt", Instant.now().getEpochSecond());
         arango.db("idekanin").collection("id_request_cache").insertDocument(doc);
 
-        arangoService.recordResults(key, List.of(Map.of("id", "T-LATE-002", "context", "TAG")),
+        arangoService.recordResults(key,
+                List.of(Map.of("id", "T-LATE-002", "context", "TAG", "relationship", "same-as")),
                 "late-worker", Instant.now().toString(), requestID, "T-LATE-002", "TAG");
 
         given().when().get("/api/cache/{k}", key)
                 .then().statusCode(200)
                 .body("status", equalTo("done"))
-                .body("results[0].id", equalTo("T-LATE-002"))
+                .body("results[0].worker", equalTo("late-worker"))
+                .body("results[0].reply[0].id", equalTo("T-LATE-002"))
                 .body("resolvedBy", equalTo("late-worker"))
                 .body("detail", nullValue());
+    }
+
+    @Test
+    void multipleWorkers_repliesAreAttributedPerWorker_andIdempotent() {
+        // Fan-in: each worker's reply lands as its own {worker, at, reply}
+        // block, so answers from several workers converge without clobbering
+        // each other, and a redelivered reply replaces the worker's previous
+        // block instead of duplicating it.
+        String key = UUID.randomUUID().toString();
+        String requestID = UUID.randomUUID().toString();
+        String at = Instant.now().toString();
+        arangoService.recordResults(key,
+                List.of(Map.of("id", "M-1", "context", "TAG", "relationship", "same-as")),
+                "worker-1", at, requestID, "M-FANIN-006", "TAG");
+        arangoService.recordResults(key,
+                List.of(Map.of("id", "M-1-SAP", "context", "SAP", "relationship", "part-of")),
+                "worker-2", at, requestID, "M-FANIN-006", "TAG");
+        // Redelivery of worker-1's reply: replaces its block, no duplicate.
+        arangoService.recordResults(key,
+                List.of(Map.of("id", "M-1-v2", "context", "TAG", "relationship", "same-as")),
+                "worker-1", at, requestID, "M-FANIN-006", "TAG");
+
+        given().when().get("/api/cache/{k}", key)
+                .then().statusCode(200)
+                .body("status", equalTo("done"))
+                .body("results.size()", equalTo(2))
+                .body("results.find { it.worker == 'worker-2' }.reply[0].id", equalTo("M-1-SAP"))
+                .body("results.find { it.worker == 'worker-2' }.reply[0].relationship", equalTo("part-of"))
+                .body("results.find { it.worker == 'worker-1' }.reply[0].id", equalTo("M-1-v2"))
+                // resolvedBy/resolvedAt track the latest reply.
+                .body("resolvedBy", equalTo("worker-1"));
     }
 
     @Test
@@ -294,7 +330,8 @@ class EndToEndLookupIT {
         String key = UUID.randomUUID().toString();
         String requestID = UUID.randomUUID().toString();
         String at = Instant.now().toString();
-        arangoService.recordResults(key, List.of(Map.of("id", "M-MULTI-004", "context", "TAG")),
+        arangoService.recordResults(key,
+                List.of(Map.of("id", "M-MULTI-004", "context", "TAG", "relationship", "same-as")),
                 "worker-ok", at, requestID, "M-MULTI-004", "TAG");
         arangoService.recordFailure(key, "source unreachable", "worker-broken", at,
                 requestID, "M-MULTI-004", "TAG");

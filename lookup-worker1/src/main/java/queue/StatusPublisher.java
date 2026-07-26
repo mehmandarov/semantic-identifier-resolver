@@ -21,7 +21,8 @@ import java.util.List;
  * <ul>
  *     <li>{@code claimed} — sent before processing starts, so the gateway can
  *     record which worker(s) picked the request up;</li>
- *     <li>{@code done} — carries the results of a successful resolution;</li>
+ *     <li>{@code done} — carries the worker's reply: its resolved result
+ *     elements;</li>
  *     <li>{@code failed} — carries the failure detail of an unsuccessful one.</li>
  * </ul>
  * Every event carries the request coordinates (requestHash, requestID, id,
@@ -39,15 +40,15 @@ public class StatusPublisher {
         statusEmitter.send(statusEvent("claimed", request, workerName));
     }
 
-    public void done(LookupQueueRequest request, List<LookupResultElement> results, String workerName) {
-        JsonArray resultArray = new JsonArray();
-        for (LookupResultElement element : results) {
-            resultArray.add(new JsonObject()
+    public void done(LookupQueueRequest request, List<LookupResultElement> reply, String workerName) {
+        JsonArray replyArray = new JsonArray();
+        for (LookupResultElement element : reply) {
+            replyArray.add(new JsonObject()
                     .put("id", element.id)
                     .put("context", element.context)
                     .put("relationship", element.relationship));
         }
-        statusEmitter.send(statusEvent("done", request, workerName).put("results", resultArray));
+        statusEmitter.send(statusEvent("done", request, workerName).put("reply", replyArray));
     }
 
     public void failed(LookupQueueRequest request, String detail, String workerName) {

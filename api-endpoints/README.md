@@ -1,5 +1,12 @@
 # idekanin: api-endpoints
 
+The API gateway of the resolver: the single entry point and the single writer
+of worker output to the result cache. It accepts lookups over REST (`202` +
+`Location`), publishes them to RabbitMQ, consumes the workers' status events
+(`claimed` / `done` / `failed`), applies them to the ArangoDB cache, times out
+stale lookups with a scheduled sweep, and serves polls of the results URL.
+See the [root README](../README.md) for the full lifecycle.
+
 
 
 

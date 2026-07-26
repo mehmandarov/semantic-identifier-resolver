@@ -157,28 +157,36 @@ public class ArangoService {
     }
 
     /**
-     * Writes a worker's results for a lookup request and marks it done.
-     * A late result deliberately overwrites a timed-out (or error) state —
-     * the resolution is still useful to cache — and clears any stale failure
-     * detail. If the document is gone, it is recreated.
+     * Merges a worker's reply into the results of a lookup request and marks
+     * it done. Results are aggregated per worker: each entry in the document's
+     * results list is one {@code {worker, at, reply}} block, so answers from
+     * several workers converge without overwriting each other, and a
+     * redelivered reply replaces the worker's previous block instead of
+     * duplicating it. A late reply deliberately overwrites a timed-out (or
+     * error) state — the resolution is still useful to cache — and clears any
+     * stale failure detail. If the document is gone, it is recreated.
      */
-    public void recordResults(String requestHash, List<?> results, String worker, String at,
+    public void recordResults(String requestHash, List<?> reply, String worker, String at,
                               String requestID, String id, String context) {
         String aql = """
+                LET replyBlock = { worker: @worker, at: @at, reply: @reply }
                 UPSERT { _key: @key }
                 INSERT { _key: @key, requestID: @requestID, id: @id, context: @context,
-                         status: "done", createdAt: @now, results: @results,
+                         status: "done", createdAt: @now, results: [ replyBlock ],
                          resolvedBy: @worker, resolvedAt: @at }
-                UPDATE { status: "done", results: @results,
+                UPDATE { status: "done",
+                         results: APPEND(
+                             (FOR r IN NOT_NULL(OLD.results, []) FILTER r.worker != @worker RETURN r),
+                             [ replyBlock ]),
                          resolvedBy: @worker, resolvedAt: @at, detail: null }
                 IN @@coll OPTIONS { keepNull: false }
                 """;
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context,
-                        Map.of("results", results, "worker", worker, "at", at)))) {
-            System.out.println("Recorded results from " + worker + " for request: " + requestHash);
+                        Map.of("reply", reply, "worker", worker, "at", at)))) {
+            System.out.println("Recorded reply from " + worker + " for request: " + requestHash);
         } catch (ArangoDBException | IOException e) {
-            System.err.println("Failed to record results for request: " + requestHash + "; " + e.getMessage());
+            System.err.println("Failed to record reply for request: " + requestHash + "; " + e.getMessage());
         }
     }
 

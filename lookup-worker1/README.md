@@ -1,5 +1,13 @@
 # idekanin: lookup-worker1
 
+A lookup worker: consumes lookup requests from its queue and answers with
+status events (`claimed` when it picks a request up, then `done` with results
+or `failed` with a detail). Each result element is `{id, context, relationship}`.
+The worker never touches the cache database -- the gateway owns all cache
+writes. Its processing step (`queue/QueueHandler`) is the plug-in slot for
+use-case specific resolution logic; version 1 echoes the input tuple with the
+identity relationship `same-as`. See the [root README](../README.md).
+
 
 
 

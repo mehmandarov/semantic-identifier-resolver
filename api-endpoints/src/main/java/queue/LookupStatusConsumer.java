@@ -14,8 +14,10 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
  * cache. This is the only place where worker output reaches the database —
  * the workers themselves know nothing about the cache, only the two queues.
  * The writes are safe under redelivery and competing gateway replicas: claims
- * append to a history list, "done" wins over any other state, and "failed"
- * never overwrites a successful resolution.
+ * append to a history list, each worker's reply is upserted into the results
+ * by worker name (a redelivery replaces the block rather than duplicating
+ * it), "done" wins over any other state, and "failed" never overwrites a
+ * successful resolution.
  */
 @ApplicationScoped
 public class LookupStatusConsumer {
@@ -40,8 +42,9 @@ public class LookupStatusConsumer {
 
         switch (type) {
             case "claimed" -> arangoService.recordClaim(requestHash, worker, at, requestID, id, context);
+            // Legacy fallback: pre-rename events carried the reply under "results".
             case "done" -> arangoService.recordResults(requestHash,
-                    event.getJsonArray("results", new JsonArray()).getList(),
+                    event.getJsonArray("reply", event.getJsonArray("results", new JsonArray())).getList(),
                     worker, at, requestID, id, context);
             case "failed" -> arangoService.recordFailure(requestHash,
                     event.getString("detail"), worker, at, requestID, id, context);

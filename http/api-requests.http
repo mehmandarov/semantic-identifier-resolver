@@ -37,9 +37,10 @@ Content-Type: application/json
 ### ---------------------------------------------------------------------
 ### Full lookup, step 2: poll the results URL
 ### 202 while pending/in_progress (body carries claimedBy once a worker
-### picked the request up), 200 when done (results with
-### {id, context, relationship}), 500 on error, 504 when timed out.
-### Re-run until the status flips to done.
+### picked the request up), 200 when done — results holds one
+### {worker, at, reply} block per answering worker, where reply is that
+### worker's list of {id, context, relationship} elements — 500 on error,
+### 504 when timed out. Re-run until the status flips to done.
 ### ---------------------------------------------------------------------
 GET {{gateway}}/api/cache/{{requestHash}}
 
