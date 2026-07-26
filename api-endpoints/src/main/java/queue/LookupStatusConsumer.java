@@ -1,5 +1,6 @@
 package queue;
 
+import io.quarkus.logging.Log;
 import cache.ArangoService;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.core.json.JsonArray;
@@ -31,7 +32,7 @@ public class LookupStatusConsumer {
         String type = event.getString("type");
         String requestHash = event.getString("requestHash");
         if (type == null || requestHash == null) {
-            System.err.println("Ignoring malformed status event: " + event);
+            Log.warn("Ignoring malformed status event: " + event);
             return;
         }
         String worker = event.getString("worker", "unknown-worker");
@@ -48,7 +49,7 @@ public class LookupStatusConsumer {
                     worker, at, requestID, id, context);
             case "failed" -> arangoService.recordFailure(requestHash,
                     event.getString("detail"), worker, at, requestID, id, context);
-            default -> System.err.println("Ignoring status event of unknown type '" + type
+            default -> Log.warn("Ignoring status event of unknown type '" + type
                     + "' for request: " + requestHash);
         }
     }

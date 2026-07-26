@@ -1,5 +1,6 @@
 package queue;
 
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import model.LookupQueueRequest;
@@ -54,7 +55,7 @@ public class QueueHandler {
     }
 
     public List<LookupResultElement> processLookupRequest(LookupQueueRequest lookupReq) {
-        System.out.println("*************Looked up ID: " + lookupReq.id + " and context: " + lookupReq.context
+        Log.info("Looked up ID: " + lookupReq.id + " and context: " + lookupReq.context
                 + " (requestID: " + lookupReq.requestID + ", requestHash: " + lookupReq.requestHash + ")");
         // Unknown descriptors answer an empty reply: the source was consulted
         // and had nothing — which is itself a cacheable answer.

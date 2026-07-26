@@ -1,5 +1,6 @@
 package cache;
 
+import io.quarkus.logging.Log;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -36,7 +37,7 @@ public class LookupTimeoutSweeper {
         }
         long marked = arangoService.markTimedOutRequests(timeoutSeconds);
         if (marked > 0) {
-            System.out.println("Timeout sweep: marked " + marked + " lookup request(s) as timed-out (window: "
+            Log.info("Timeout sweep: marked " + marked + " lookup request(s) as timed-out (window: "
                     + timeoutSeconds + "s)");
         }
     }

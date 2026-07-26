@@ -1,3 +1,4 @@
+import io.quarkus.logging.Log;
 import cache.ArangoService;
 import com.arangodb.entity.ArangoDBVersion;
 import com.arangodb.entity.BaseDocument;
@@ -73,7 +74,7 @@ public class MyApplication {
         // caller-demanded hard refresh. A repeat POST for a pending,
         // in-progress or done lookup answers from the cache alone.
         if (arangoService.prepareRequestForPublish(lookupQueueRequest, resultsHardRefresh)) {
-            System.out.println("*** SENDING A LOOKUP REQUEST *** requestHash: " + requestHash
+            Log.info("Publishing lookup request, requestHash: " + requestHash
                     + ", requestID: " + correlationID);
             lookupRequesttEmitter.send(lookupQueueRequest);
         }

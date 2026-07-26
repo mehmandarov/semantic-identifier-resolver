@@ -1,4 +1,5 @@
 
+import io.quarkus.logging.Log;
 import io.micrometer.core.annotation.Counted;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.core.json.JsonObject;
@@ -64,7 +65,7 @@ public class MyApplication{
     public void idRetriever(JsonObject obj) {
         LookupQueueRequest lookupReq = obj.mapTo(LookupQueueRequest.class);
         if (!queueHandler.handles(lookupReq.context)) {
-            System.out.println(WORKER_NAME + ": skipping request " + lookupReq.requestHash
+            Log.info(WORKER_NAME + ": skipping request " + lookupReq.requestHash
                     + " with unhandled context: " + lookupReq.context);
             return;
         }
@@ -77,6 +78,9 @@ public class MyApplication{
             List<LookupResultElement> results = queueHandler.processLookupRequest(lookupReq);
             statusPublisher.done(lookupReq, results, WORKER_NAME);
         } catch (RuntimeException e) {
+            // Log the full stack trace here — only the message travels in the
+            // failed event to the gateway.
+            Log.error("Processing failed for request " + lookupReq.requestHash, e);
             statusPublisher.failed(lookupReq, e.getMessage(), WORKER_NAME);
         }
     }

@@ -1,5 +1,6 @@
 package cache;
 
+import io.quarkus.logging.Log;
 import com.arangodb.ArangoCursor;
 import com.arangodb.ArangoDB;
 import com.arangodb.ArangoDBException;
@@ -46,9 +47,9 @@ public class ArangoService {
             // Check if the database exists, if not create it.
             if (!arango.getAccessibleDatabases().contains(dbName)){
                 arango.createDatabase(dbName);
-                System.out.println("Database created: " + dbName);
+                Log.info("Database created: " + dbName);
             } else {
-                System.out.println("Using existing database: " + dbName);
+                Log.info("Using existing database: " + dbName);
             }
 
             // Check if the collection exists, if not create it. Note:
@@ -59,9 +60,9 @@ public class ArangoService {
                     .anyMatch(dbCollection::equals);
             if (!collectionExists) {
                 arango.db(dbName).createCollection(dbCollection);
-                System.out.println("Collection created: " + dbCollection);
+                Log.info("Collection created: " + dbCollection);
             } else {
-                System.out.println("Using existing collection: " + dbCollection);
+                Log.info("Using existing collection: " + dbCollection);
             }
 
             // Ensure a TTL index on createdAt so cache documents expire after
@@ -70,13 +71,13 @@ public class ArangoService {
                 arango.db(dbName).collection(dbCollection).ensureTtlIndex(
                         Collections.singleton(CREATED_AT_FIELD),
                         new TtlIndexOptions().expireAfter((int) ttlSeconds));
-                System.out.println("TTL index ensured on '" + CREATED_AT_FIELD +
+                Log.info("TTL index ensured on '" + CREATED_AT_FIELD +
                         "' with expireAfter=" + ttlSeconds + "s");
             } else {
-                System.out.println("TTL disabled (cache.ttl-seconds<=0), no TTL index configured.");
+                Log.info("TTL disabled (cache.ttl-seconds<=0), no TTL index configured.");
             }
         } catch(ArangoDBException e) {
-            System.err.println("Failed to create database: " + dbName + " or collection: " + dbCollection + "; " + e.getMessage());
+            Log.error("Failed to create database: " + dbName + " or collection: " + dbCollection, e);
         }
     }
 
@@ -98,7 +99,7 @@ public class ArangoService {
         String key = request.requestHash.toString();
         try {
             if (arango.db(dbName).collection(dbCollection).documentExists(key)) {
-                System.out.println("Request already recorded, leaving cache document as-is: " + key);
+                Log.info("Request already recorded, leaving cache document as-is: " + key);
                 return;
             }
             BaseDocument doc = new BaseDocument(key);
@@ -108,10 +109,10 @@ public class ArangoService {
             doc.addAttribute("status", STATUS_PENDING);
             doc.addAttribute(CREATED_AT_FIELD, Instant.now().getEpochSecond());
             arango.db(dbName).collection(dbCollection).insertDocument(doc);
-            System.out.println("Recorded pending request: " + key
+            Log.info("Recorded pending request: " + key
                     + " (requestID: " + request.requestID + ")");
         } catch (ArangoDBException e) {
-            System.err.println("Failed to record pending request: " + key + "; " + e.getMessage());
+            Log.error("Failed to record pending request: " + key, e);
         }
     }
 
@@ -123,7 +124,7 @@ public class ArangoService {
         try {
             return arango.db(dbName).collection(dbCollection).getDocument(key, BaseDocument.class);
         } catch (ArangoDBException e) {
-            System.err.println("Failed to read request document: " + key + "; " + e.getMessage());
+            Log.error("Failed to read request document: " + key, e);
             return null;
         }
     }
@@ -151,10 +152,10 @@ public class ArangoService {
                 """;
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context, Map.of("claim", claim)))) {
-            System.out.println("Recorded claim by " + worker + " for request: " + requestHash
+            Log.info("Recorded claim by " + worker + " for request: " + requestHash
                     + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {
-            System.err.println("Failed to record claim for request: " + requestHash + "; " + e.getMessage());
+            Log.error("Failed to record claim for request: " + requestHash, e);
         }
     }
 
@@ -189,15 +190,15 @@ public class ArangoService {
                     Map.of("@coll", dbCollection, "key", key,
                             "requestID", request.requestID.toString(),
                             "now", Instant.now().getEpochSecond()))) {
-                System.out.println("Reset " + status + " lookup for "
+                Log.info("Reset " + status + " lookup for "
                         + (hardRefresh ? "hard refresh" : "retry") + ": " + key
                         + " (new requestID: " + request.requestID + ")");
             } catch (ArangoDBException | IOException e) {
-                System.err.println("Failed to reset lookup for reprocessing: " + key + "; " + e.getMessage());
+                Log.error("Failed to reset lookup for reprocessing: " + key, e);
             }
             return true;
         }
-        System.out.println("Lookup already " + status + ", cached state stands: " + key
+        Log.info("Lookup already " + status + ", cached state stands: " + key
                 + " (receipt requestID: " + request.requestID + ")");
         return false;
     }
@@ -230,10 +231,10 @@ public class ArangoService {
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context,
                         Map.of("reply", reply, "worker", worker, "at", at)))) {
-            System.out.println("Recorded reply from " + worker + " for request: " + requestHash
+            Log.info("Recorded reply from " + worker + " for request: " + requestHash
                     + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {
-            System.err.println("Failed to record reply for request: " + requestHash + "; " + e.getMessage());
+            Log.error("Failed to record reply for request: " + requestHash, e);
         }
     }
 
@@ -259,10 +260,10 @@ public class ArangoService {
                 baseBindVars(requestHash, requestID, id, context,
                         Map.of("detail", detail == null ? "Unknown processing failure." : detail,
                                 "worker", worker, "at", at)))) {
-            System.out.println("Recorded failure from " + worker + " for request: " + requestHash
+            Log.info("Recorded failure from " + worker + " for request: " + requestHash
                     + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {
-            System.err.println("Failed to record failure for request: " + requestHash + "; " + e.getMessage());
+            Log.error("Failed to record failure for request: " + requestHash, e);
         }
     }
 
@@ -287,7 +288,7 @@ public class ArangoService {
                 Map.of("@coll", dbCollection, "cutoff", cutoff, "timeoutSeconds", timeoutSeconds))) {
             return cursor.asListRemaining().size();
         } catch (ArangoDBException | IOException e) {
-            System.err.println("Failed to mark timed-out requests; " + e.getMessage());
+            Log.error("Failed to mark timed-out requests", e);
             return 0;
         }
     }
