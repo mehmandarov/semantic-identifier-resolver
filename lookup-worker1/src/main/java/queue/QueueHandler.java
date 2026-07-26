@@ -21,6 +21,9 @@ public class QueueHandler {
      */
     public List<LookupResultElement> processLookupRequest(LookupQueueRequest lookupReq) {
         System.out.println("*************Looked up ID: "+ lookupReq.id + " and context: " + lookupReq.context);
-        return List.of(new LookupResultElement(lookupReq.id, lookupReq.context));
+        // Echo case: the result is the input tuple itself, so the relationship
+        // is identity ("same-as"). Real plug-ins supply relations such as
+        // "part-of" / "has-part" between the input and the returned identifier.
+        return List.of(new LookupResultElement(lookupReq.id, lookupReq.context, "same-as"));
     }
 }

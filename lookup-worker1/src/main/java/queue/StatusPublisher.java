@@ -42,7 +42,10 @@ public class StatusPublisher {
     public void done(LookupQueueRequest request, List<LookupResultElement> results, String workerName) {
         JsonArray resultArray = new JsonArray();
         for (LookupResultElement element : results) {
-            resultArray.add(new JsonObject().put("id", element.id).put("context", element.context));
+            resultArray.add(new JsonObject()
+                    .put("id", element.id)
+                    .put("context", element.context)
+                    .put("relationship", element.relationship));
         }
         statusEmitter.send(statusEvent("done", request, workerName).put("results", resultArray));
     }

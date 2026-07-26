@@ -37,10 +37,14 @@ public class SimulatedWorker {
         // Announce the pick-up first, so the gateway can record who claimed it.
         statusEmitter.send(statusEvent("claimed", req));
 
-        // Echo the input tuple as a single-element result, matching the
-        // production worker's v1 behaviour, and report the lookup as done.
+        // Echo the input tuple as a single-element result with the identity
+        // relationship, matching the production worker's v1 behaviour, and
+        // report the lookup as done.
         JsonArray results = new JsonArray()
-                .add(new JsonObject().put("id", req.id).put("context", req.context));
+                .add(new JsonObject()
+                        .put("id", req.id)
+                        .put("context", req.context)
+                        .put("relationship", "same-as"));
         statusEmitter.send(statusEvent("done", req).put("results", results));
     }
 

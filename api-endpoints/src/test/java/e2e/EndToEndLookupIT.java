@@ -86,6 +86,7 @@ class EndToEndLookupIT {
                         .body("results.size()", equalTo(1))
                         .body("results[0].id", equalTo("A-24HA001"))
                         .body("results[0].context", equalTo("TAG"))
+                        .body("results[0].relationship", equalTo("same-as"))
                         .body("resolvedBy", equalTo(SimulatedWorker.WORKER_NAME))
                         // Pick-up tracking: the claim event was applied too.
                         .body("claimedBy.size()", greaterThanOrEqualTo(1))
