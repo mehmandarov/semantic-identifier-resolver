@@ -224,6 +224,13 @@ Configuration lives in each service's `application.properties`
 (`quarkus.otel.service.name`, `quarkus.otel.exporter.otlp.traces.endpoint`).
 Tracing is disabled under the test profile, where no collector runs.
 
+Note: the `quarkus-microprofile` umbrella extension ships MP Telemetry
+defaults that disable the OTel SDK (`quarkus.otel.sdk.disabled=true`) and
+point the OTLP exporter at `localhost:4317`. The properties files therefore
+re-enable the SDK explicitly and set the Jaeger endpoint in **both** property
+families (`quarkus.otel.*` and MP-style `otel.*`) — removing either half
+silently turns tracing off again.
+
 
 ## Manual start of services
 ### Start RabbitMQ
