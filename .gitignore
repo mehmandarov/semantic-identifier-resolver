@@ -1,3 +1,6 @@
+# Project specific
+code-analysis-reports/
+
 #Maven
 target/
 pom.xml.tag
