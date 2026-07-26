@@ -388,24 +388,6 @@ class EndToEndLookupIT {
     }
 
     @Test
-    void mockLookup_runsFullFlowWithFixedInputs() {
-        // The mock endpoint is meant for quick smoke checks; it must exercise
-        // the same pipeline as the real one and produce a matching document.
-        Response mocked = given().when().get("/api/mock_lookup")
-                .then().statusCode(202)
-                .header("Location", notNullValue())
-                .extract().response();
-
-        String hash = mocked.jsonPath().getString("requestHash");
-        assertEquals(UUIDv5.fromUTF8("A-24HA001_TAG").toString(), hash,
-                "mock_lookup must use the documented fixed (id, context)");
-
-        await().atMost(Duration.ofSeconds(30))
-                .until(() -> given().when().get("/api/cache/{k}", hash)
-                        .then().extract().statusCode() == 200);
-    }
-
-    @Test
     void cacheAllEndpoint_returns501NotImplemented() {
         // Contract check: the /cache/all endpoint is a documented placeholder.
         // If someone ever wires it up, this test should fail loudly and force

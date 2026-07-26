@@ -56,7 +56,6 @@ polls until the lookup completes.
 | Method | Path                       | Codes                                                                                                                    |
 |--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | POST   | `/api/lookup`              | `202` accepted + `Location`; `400` blank `id`/`context`                                                                  |
-| POST   | `/api/lookup/mock`         | Same as above, without publishing to the queue                                                                           |
 | GET    | `/api/cache/{requestHash}` | `200` done (with `results`); `202` pending or in progress (with `claimedBy`); `500` error (with `detail`); `504` timed out; `404` unknown hash; `400` blank key |
 | GET    | `/api/lookup/ping`         | `200` liveness check                                                                                                     |
 
