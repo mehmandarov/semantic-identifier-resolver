@@ -249,7 +249,7 @@ gateway — worker-originated fields arrive as status events):
 | Field         | Type            | Source                                              | Purpose                                    |
 |---------------|-----------------|-----------------------------------------------------|--------------------------------------------|
 | `_key`        | string (UUID v5)| gateway on POST                                     | Deterministic hash of `id + "_" + context` |
-| `requestID`   | string (UUID v4)| gateway on POST (or event on recreate)              | Correlation ID for one request occurrence  |
+| `requestID`   | string (UUID v4)| gateway on POST (or event on recreate)              | Correlation ID of the request occurrence that (re)queued the work. Every POST receipt carries its own fresh `requestID`; a repeat POST answered from the cache does not replace the stored one |
 | `id`          | string          | gateway on POST                                     | Business ID being looked up                |
 | `context`     | string          | gateway on POST                                     | Business context                           |
 | `status`      | `pending` / `in_progress` / `done` / `error` / `timed-out` | gateway       | Current lifecycle state                    |

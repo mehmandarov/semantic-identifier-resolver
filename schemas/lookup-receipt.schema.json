@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "Lookup receipt",
-  "description": "Body of the 202 response to POST /api/lookup: the accepted request plus the results URL, which the Location header also points at.",
+  "description": "Body of the 202 response to POST /api/lookup: the accepted request plus the results URL, which the Location header also points at. The requestID identifies this POST occurrence; the results document keeps the requestID of the occurrence that queued (or re-queued) the work, so a repeat POST answered from the cache receives a requestID that differs from the one at the results URL.",
   "type": "object",
   "required": ["requestID", "requestHash", "id", "context", "resultsUrl"],
   "properties": {
