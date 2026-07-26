@@ -55,7 +55,8 @@ public class QueueHandler {
     }
 
     public List<LookupResultElement> processLookupRequest(LookupQueueRequest lookupReq) {
-        System.out.println("*************Looked up ID: " + lookupReq.id + " and context: " + lookupReq.context);
+        System.out.println("*************Looked up ID: " + lookupReq.id + " and context: " + lookupReq.context
+                + " (requestID: " + lookupReq.requestID + ", requestHash: " + lookupReq.requestHash + ")");
         // Unknown tags answer an empty reply: the source was consulted and
         // had nothing — which is itself a cacheable answer.
         return TAG_PARENTS.getOrDefault(normalize(lookupReq.id), List.of());

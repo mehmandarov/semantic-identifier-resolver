@@ -108,7 +108,8 @@ public class ArangoService {
             doc.addAttribute("status", STATUS_PENDING);
             doc.addAttribute(CREATED_AT_FIELD, Instant.now().getEpochSecond());
             arango.db(dbName).collection(dbCollection).insertDocument(doc);
-            System.out.println("Recorded pending request: " + key);
+            System.out.println("Recorded pending request: " + key
+                    + " (requestID: " + request.requestID + ")");
         } catch (ArangoDBException e) {
             System.err.println("Failed to record pending request: " + key + "; " + e.getMessage());
         }
@@ -150,7 +151,8 @@ public class ArangoService {
                 """;
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context, Map.of("claim", claim)))) {
-            System.out.println("Recorded claim by " + worker + " for request: " + requestHash);
+            System.out.println("Recorded claim by " + worker + " for request: " + requestHash
+                    + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to record claim for request: " + requestHash + "; " + e.getMessage());
         }
@@ -188,13 +190,15 @@ public class ArangoService {
                             "requestID", request.requestID.toString(),
                             "now", Instant.now().getEpochSecond()))) {
                 System.out.println("Reset " + status + " lookup for "
-                        + (hardRefresh ? "hard refresh" : "retry") + ": " + key);
+                        + (hardRefresh ? "hard refresh" : "retry") + ": " + key
+                        + " (new requestID: " + request.requestID + ")");
             } catch (ArangoDBException | IOException e) {
                 System.err.println("Failed to reset lookup for reprocessing: " + key + "; " + e.getMessage());
             }
             return true;
         }
-        System.out.println("Lookup already " + status + ", cached state stands: " + key);
+        System.out.println("Lookup already " + status + ", cached state stands: " + key
+                + " (receipt requestID: " + request.requestID + ")");
         return false;
     }
 
@@ -226,7 +230,8 @@ public class ArangoService {
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context,
                         Map.of("reply", reply, "worker", worker, "at", at)))) {
-            System.out.println("Recorded reply from " + worker + " for request: " + requestHash);
+            System.out.println("Recorded reply from " + worker + " for request: " + requestHash
+                    + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to record reply for request: " + requestHash + "; " + e.getMessage());
         }
@@ -254,7 +259,8 @@ public class ArangoService {
                 baseBindVars(requestHash, requestID, id, context,
                         Map.of("detail", detail == null ? "Unknown processing failure." : detail,
                                 "worker", worker, "at", at)))) {
-            System.out.println("Recorded failure from " + worker + " for request: " + requestHash);
+            System.out.println("Recorded failure from " + worker + " for request: " + requestHash
+                    + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to record failure for request: " + requestHash + "; " + e.getMessage());
         }

@@ -73,7 +73,8 @@ public class MyApplication {
         // caller-demanded hard refresh. A repeat POST for a pending,
         // in-progress or done lookup answers from the cache alone.
         if (arangoService.prepareRequestForPublish(lookupQueueRequest, resultsHardRefresh)) {
-            System.out.println("*** SENDING A LOOKUP REQUEST ***");
+            System.out.println("*** SENDING A LOOKUP REQUEST *** requestHash: " + requestHash
+                    + ", requestID: " + correlationID);
             lookupRequesttEmitter.send(lookupQueueRequest);
         }
 
