@@ -56,6 +56,18 @@ public class IntegrationEnvResource implements QuarkusTestResourceLifecycleManag
         props.put("mp.messaging.incoming.workerSim.routing-keys", "routing_id_lookup_with_ctx");
         props.put("mp.messaging.incoming.workerSim.queue.name", "test_worker_queue");
 
+        // Incoming channel (slow simulated worker <- RabbitMQ), own queue on
+        // the same routing key: every worker sees every request.
+        props.put("mp.messaging.incoming.workerSimSlow.connector", "smallrye-rabbitmq");
+        props.put("mp.messaging.incoming.workerSimSlow.exchange.name", "exchange_id_mapper");
+        props.put("mp.messaging.incoming.workerSimSlow.exchange.type", "direct");
+        props.put("mp.messaging.incoming.workerSimSlow.routing-keys", "routing_id_lookup_with_ctx");
+        props.put("mp.messaging.incoming.workerSimSlow.queue.name", "test_worker_slow_queue");
+
+        // The slow worker sleeps past the 5s lookup timeout below, so the
+        // sweep fires mid-processing and its reply arrives late.
+        props.put("e2e.slow-worker.delay-ms", "12000");
+
         // Outgoing status events (simulated worker -> RabbitMQ)
         props.put("mp.messaging.outgoing.workerSimStatus.connector", "smallrye-rabbitmq");
         props.put("mp.messaging.outgoing.workerSimStatus.exchange.name", "exchange_id_mapper");

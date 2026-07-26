@@ -78,6 +78,10 @@ services:
     image: "com.demo.website:lookup-worker2"
     hostname: "lookup-worker-2"
     container_name: "lookup-worker-2"
+    environment:
+      # FAKE demo-only slowdown (worker.fake-processing-delay-ms). Off (0)
+      # unless WORKER2_FAKE_DELAY_MS is set when bringing the service up.
+      - WORKER_FAKE_PROCESSING_DELAY_MS=${WORKER2_FAKE_DELAY_MS:-0}
     ports:
       - "9086:8080"
     networks:

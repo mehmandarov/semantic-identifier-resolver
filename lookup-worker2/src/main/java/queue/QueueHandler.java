@@ -30,11 +30,28 @@ public class QueueHandler {
      */
     private final Set<String> handledContexts;
 
+    /**
+     * FAKE processing delay — dev/demo ONLY, never for production. Sleeps
+     * this many milliseconds inside the processing step (after the claim),
+     * simulating a slow source so the lookup lifecycle can be watched in
+     * the tracing UI. Values to try against the gateway's 60s timeout:
+     * 15000 (finishes in time) or 90000 (lookup answers 504 timed-out, the
+     * late reply then overwrites it — the accept-late policy live).
+     */
+    private final long fakeProcessingDelayMs;
+
     @Inject
-    public QueueHandler(@ConfigProperty(name = "worker.contexts") List<String> contexts) {
+    public QueueHandler(@ConfigProperty(name = "worker.contexts") List<String> contexts,
+                        @ConfigProperty(name = "worker.fake-processing-delay-ms", defaultValue = "0")
+                        long fakeProcessingDelayMs) {
         this.handledContexts = contexts.stream()
                 .map(c -> c.trim().toUpperCase())
                 .collect(Collectors.toUnmodifiableSet());
+        this.fakeProcessingDelayMs = fakeProcessingDelayMs;
+        if (fakeProcessingDelayMs > 0) {
+            Log.warn("FAKE processing delay is active: every lookup is slowed by "
+                    + fakeProcessingDelayMs + " ms. Dev/demo setting only — never use in production.");
+        }
     }
 
     /** Demo stand-in for this worker's source: tag -> what the tag is part of. */
@@ -58,9 +75,25 @@ public class QueueHandler {
     public List<LookupResultElement> processLookupRequest(LookupQueueRequest lookupReq) {
         Log.info("Looked up ID: " + lookupReq.id + " and context: " + lookupReq.context
                 + " (requestID: " + lookupReq.requestID + ", requestHash: " + lookupReq.requestHash + ")");
+        applyFakeDelay(lookupReq);
         // Unknown tags answer an empty reply: the source was consulted and
         // had nothing — which is itself a cacheable answer.
         return TAG_PARENTS.getOrDefault(normalize(lookupReq.id), List.of());
+    }
+
+    /** FAKE dev/demo-only slowdown; see {@link #fakeProcessingDelayMs}. */
+    private void applyFakeDelay(LookupQueueRequest lookupReq) {
+        if (fakeProcessingDelayMs <= 0) {
+            return;
+        }
+        Log.warn("FAKE delay: sleeping " + fakeProcessingDelayMs + " ms before answering request "
+                + lookupReq.requestHash);
+        try {
+            Thread.sleep(fakeProcessingDelayMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted during FAKE processing delay", e);
+        }
     }
 
     private static String normalize(String id) {

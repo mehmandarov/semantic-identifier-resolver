@@ -1,11 +1,13 @@
 package e2e;
 
+import io.quarkus.logging.Log;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import model.LookupQueueRequest;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
@@ -13,39 +15,37 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
 import java.time.Instant;
 
 /**
- * Test-only stand-in worker: consumes lookup requests from RabbitMQ and
- * publishes status events (claimed, then done with an echo reply) back to
- * the status queue — the minimal implementation of the worker contract.
- * Like the production workers, it never touches the cache database — the
- * gateway's status consumer owns all cache writes. Kept in this module so
- * the whole POST -> queue -> worker -> status events -> cache -> GET flow
- * can be exercised inside a single JVM.
+ * Test-only mock of a slow worker: claims lookups in the {@code SLOW}
+ * context, then sleeps past the gateway's (test-configured) lookup timeout
+ * before replying — so the timeout sweep fires mid-processing and the reply
+ * arrives late. Exercises the full in_progress → timed-out → accept-late
+ * path through the real queues, mirroring the FAKE processing delay knob of
+ * production worker 2 (worker.fake-processing-delay-ms).
  */
 @ApplicationScoped
-public class SimulatedWorker {
+public class SlowSimulatedWorker {
 
-    static final String WORKER_NAME = "e2e-test-worker";
+    static final String WORKER_NAME = "e2e-slow-worker";
+    static final String SLOW_CONTEXT = "SLOW";
 
     @Inject
     @Channel("workerSimStatus")
     Emitter<JsonObject> statusEmitter;
 
-    @Incoming("workerSim")
+    @ConfigProperty(name = "e2e.slow-worker.delay-ms", defaultValue = "12000")
+    long delayMs;
+
+    @Incoming("workerSimSlow")
     @Blocking
-    public void onLookup(JsonObject obj) {
+    public void onLookup(JsonObject obj) throws InterruptedException {
         LookupQueueRequest req = obj.mapTo(LookupQueueRequest.class);
-        if (SlowSimulatedWorker.SLOW_CONTEXT.equalsIgnoreCase(req.context)) {
-            // Mirrors production context filtering: SLOW lookups belong to
-            // the slow stand-in worker; ignore without a claim.
+        if (!SLOW_CONTEXT.equalsIgnoreCase(req.context)) {
+            // Mirrors production context filtering: not ours, no claim.
             return;
         }
-
-        // Announce the pick-up first, so the gateway can record who claimed it.
         statusEmitter.send(statusEvent("claimed", req));
-
-        // Echo the input tuple as the worker's reply — a single element
-        // related as "same-as" (trivially: it is the input itself), the
-        // minimal valid worker answer — and report the lookup as done.
+        Log.info("Slow worker claimed " + req.requestHash + ", sleeping " + delayMs + " ms");
+        Thread.sleep(delayMs);
         JsonArray reply = new JsonArray()
                 .add(new JsonObject()
                         .put("id", req.id)

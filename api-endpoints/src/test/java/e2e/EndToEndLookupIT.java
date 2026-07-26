@@ -213,6 +213,50 @@ class EndToEndLookupIT {
     }
 
     @Test
+    void slowWorker_timesOutMidProcessing_lateReplyStillResolves() {
+        // Mock slow service: the SLOW context is claimed by SlowSimulatedWorker,
+        // which sleeps past the 5s lookup timeout before replying. The full
+        // lifecycle plays through the real queues: claimed (202 in_progress)
+        // -> sweep fires mid-processing (504 timed-out) -> the late reply
+        // arrives and still resolves the lookup (200 done, accept-late).
+        String id = "S-SLOW-009";
+        UUID hash = UUIDv5.fromUTF8(id.toUpperCase() + "_" + SlowSimulatedWorker.SLOW_CONTEXT);
+
+        given().contentType("application/json")
+                .body(Map.of("id", id, "context", SlowSimulatedWorker.SLOW_CONTEXT))
+                .when().post("/api/lookup")
+                .then().statusCode(202);
+
+        // The slow worker claims quickly: pending -> in_progress.
+        await().atMost(Duration.ofSeconds(5))
+                .pollInterval(Duration.ofMillis(250))
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash.toString())
+                        .then().statusCode(202)
+                        .body("status", equalTo("in_progress"))
+                        .body("claimedBy[0].worker", equalTo(SlowSimulatedWorker.WORKER_NAME)));
+
+        // The sweep times the lookup out while the worker is still busy.
+        await().atMost(Duration.ofSeconds(10))
+                .pollInterval(Duration.ofMillis(250))
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash.toString())
+                        .then().statusCode(504)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
+                        .body("status", equalTo("timed-out")));
+
+        // The late reply overwrites the timed-out state: accept-late policy.
+        await().atMost(Duration.ofSeconds(20))
+                .pollInterval(Duration.ofMillis(250))
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash.toString())
+                        .then().statusCode(200)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
+                        .body("status", equalTo("done"))
+                        .body("detail", nullValue())
+                        .body("results[0].id", equalTo(id))
+                        .body("resultsByWorker[0].worker", equalTo(SlowSimulatedWorker.WORKER_NAME))
+                        .body("claimedBy[0].worker", equalTo(SlowSimulatedWorker.WORKER_NAME)));
+    }
+
+    @Test
     void post_blankId_returns400() {
         given().contentType("application/json")
                 .body(Map.of("id", "  ", "context", "TAG"))

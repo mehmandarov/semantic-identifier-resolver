@@ -133,6 +133,32 @@ two blocks in `resultsByWorker` — while an `EPC_DESCRIPTOR` lookup is answered
 by worker 3 alone. A known context with an unknown id answers `done` with an
 empty reply: the source was consulted and had nothing.
 
+Worker 2 additionally exposes a **FAKE, dev/demo-only** slowdown knob,
+`worker.fake-processing-delay-ms` (default `0` = off), which sleeps inside
+the processing step after the claim. Set it to `15000` for a visibly slow
+but successful lookup, or to `90000` (beyond the 60s lookup timeout) to
+watch the whole failure story in Jaeger and the API: `202 in_progress` →
+`504 timed-out` → the late reply lands and the lookup flips to `200 done`
+(accept-late). The same lifecycle is covered end-to-end by the
+`SlowSimulatedWorker` mock in the e2e suite. Never set this in production.
+
+Turning it on and off (no image rebuild needed — the property maps to the
+`WORKER_FAKE_PROCESSING_DELAY_MS` environment variable, which
+`compose.yaml` passes through):
+
+```shell
+# ON: recreate worker 2 with a 90s delay (exceeds the 60s timeout)
+WORKER2_FAKE_DELAY_MS=90000 docker compose --env-file .env.arangodb \
+  -f compose.yaml -p idekanin-resolver up -d lookupworker2
+
+# OFF: recreate without the variable (falls back to 0)
+docker compose --env-file .env.arangodb \
+  -f compose.yaml -p idekanin-resolver up -d lookupworker2
+```
+
+Worker 2 logs a `WARN` at start-up and per request while the delay is
+active, so an accidentally slowed deployment is loud.
+
 Each worker's `GET /api/ping` introduces it, answering `pong` with the
 worker's name and its configured contexts:
 
