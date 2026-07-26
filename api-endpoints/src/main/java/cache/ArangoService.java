@@ -1,5 +1,6 @@
 package cache;
 
+import com.arangodb.ArangoCursor;
 import com.arangodb.ArangoDB;
 import com.arangodb.ArangoDBException;
 import com.arangodb.entity.ArangoDBVersion;
@@ -12,6 +13,7 @@ import jakarta.inject.Inject;
 import model.LookupQueueRequest;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,7 +35,6 @@ public class ArangoService {
     private final long ttlSeconds;
     private final String dbName = "idekanin";
     private final String dbCollection = "id_request_cache";
-    private CollectionEntity myArangoCollection;
 
     @Inject
     public ArangoService(final ArangoDB arango,
@@ -50,9 +51,14 @@ public class ArangoService {
                 System.out.println("Using existing database: " + dbName);
             }
 
-            // Check if the collection exists, if not create it.
-            if (!arango.db(dbName).getCollections().contains(dbCollection)){
-                myArangoCollection = arango.db(dbName).createCollection(dbCollection);
+            // Check if the collection exists, if not create it. Note:
+            // getCollections() answers CollectionEntity objects, so the
+            // existence check must compare names, not the raw entities.
+            boolean collectionExists = arango.db(dbName).getCollections().stream()
+                    .map(CollectionEntity::getName)
+                    .anyMatch(dbCollection::equals);
+            if (!collectionExists) {
+                arango.db(dbName).createCollection(dbCollection);
                 System.out.println("Collection created: " + dbCollection);
             } else {
                 System.out.println("Using existing collection: " + dbCollection);
@@ -142,11 +148,10 @@ public class ArangoService {
                          claimedBy: APPEND(NOT_NULL(OLD.claimedBy, []), [ @claim ]) }
                 IN @@coll
                 """;
-        try {
-            arango.db(dbName).query(aql, Void.class,
-                    baseBindVars(requestHash, requestID, id, context, Map.of("claim", claim)));
+        try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
+                baseBindVars(requestHash, requestID, id, context, Map.of("claim", claim)))) {
             System.out.println("Recorded claim by " + worker + " for request: " + requestHash);
-        } catch (ArangoDBException e) {
+        } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to record claim for request: " + requestHash + "; " + e.getMessage());
         }
     }
@@ -168,12 +173,11 @@ public class ArangoService {
                          resolvedBy: @worker, resolvedAt: @at, detail: null }
                 IN @@coll OPTIONS { keepNull: false }
                 """;
-        try {
-            arango.db(dbName).query(aql, Void.class,
-                    baseBindVars(requestHash, requestID, id, context,
-                            Map.of("results", results, "worker", worker, "at", at)));
+        try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
+                baseBindVars(requestHash, requestID, id, context,
+                        Map.of("results", results, "worker", worker, "at", at)))) {
             System.out.println("Recorded results from " + worker + " for request: " + requestHash);
-        } catch (ArangoDBException e) {
+        } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to record results for request: " + requestHash + "; " + e.getMessage());
         }
     }
@@ -196,13 +200,12 @@ public class ArangoService {
                          resolvedAt: OLD.status == "done" ? OLD.resolvedAt : @at }
                 IN @@coll
                 """;
-        try {
-            arango.db(dbName).query(aql, Void.class,
-                    baseBindVars(requestHash, requestID, id, context,
-                            Map.of("detail", detail == null ? "Unknown processing failure." : detail,
-                                    "worker", worker, "at", at)));
+        try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
+                baseBindVars(requestHash, requestID, id, context,
+                        Map.of("detail", detail == null ? "Unknown processing failure." : detail,
+                                "worker", worker, "at", at)))) {
             System.out.println("Recorded failure from " + worker + " for request: " + requestHash);
-        } catch (ArangoDBException e) {
+        } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to record failure for request: " + requestHash + "; " + e.getMessage());
         }
     }
@@ -224,13 +227,10 @@ public class ArangoService {
                   IN @@coll
                   RETURN NEW._key
                 """;
-        try {
-            List<String> marked = arango.db(dbName)
-                    .query(aql, String.class,
-                            Map.of("@coll", dbCollection, "cutoff", cutoff, "timeoutSeconds", timeoutSeconds))
-                    .asListRemaining();
-            return marked.size();
-        } catch (ArangoDBException e) {
+        try (ArangoCursor<String> cursor = arango.db(dbName).query(aql, String.class,
+                Map.of("@coll", dbCollection, "cutoff", cutoff, "timeoutSeconds", timeoutSeconds))) {
+            return cursor.asListRemaining().size();
+        } catch (ArangoDBException | IOException e) {
             System.err.println("Failed to mark timed-out requests; " + e.getMessage());
             return 0;
         }

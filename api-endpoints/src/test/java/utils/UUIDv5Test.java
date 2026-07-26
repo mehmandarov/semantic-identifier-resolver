@@ -52,6 +52,6 @@ class UUIDv5Test {
 
     @Test
     void fromBytes_rejectsNull() {
-        assertThrows(NullPointerException.class, () -> UUIDv5.fromBytes((byte[]) null));
+        assertThrows(NullPointerException.class, () -> UUIDv5.fromBytes(null));
     }
 }

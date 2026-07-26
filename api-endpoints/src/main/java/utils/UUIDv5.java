@@ -104,7 +104,7 @@ public class UUIDv5 {
      *            A 16 (or more) byte array to be the basis of the UUID
      * @param version
      *            The version number to replace 4 bits of the hash (the variant
-     *            code will replace 2 more bits))
+     *            code will replace 2 more bits)
      * @return A UUID object
      */
     static UUID makeUUID(byte[] hash, int version) {

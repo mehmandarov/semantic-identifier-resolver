@@ -16,7 +16,6 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
 import queue.QueueHandler;
 import queue.StatusPublisher;
 
-import java.net.URISyntaxException;
 import java.util.List;
 
 @ApplicationScoped
@@ -34,7 +33,7 @@ public class MyApplication{
     @Path("api/ping")
     @GET
     @Produces(MediaType.TEXT_PLAIN)
-    public String entryPoint() throws URISyntaxException {
+    public String entryPoint() {
         return "lookup-worker1: Hai there!";
     }
 

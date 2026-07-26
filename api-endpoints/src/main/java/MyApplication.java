@@ -19,7 +19,6 @@ import org.eclipse.microprofile.reactive.messaging.Emitter;
 import io.micrometer.core.annotation.Counted;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -36,7 +35,7 @@ public class MyApplication {
     @Path("ping")
     @GET
     @Produces(MediaType.TEXT_PLAIN)
-    public String entryPoint() throws URISyntaxException {
+    public String entryPoint() {
         return "api-endpoints: Hai there! PONG.";
     }
 
@@ -47,7 +46,7 @@ public class MyApplication {
     @Counted(value = "id_lookup_service_mock", extraTags = {"purpose", "ID_lookup_mock"})
     @Operation(summary = "CUSTOM: *MOCK* lookup service. DEBUG ONLY.",
             description = "*MOCK* lookup service, with a key and a context provided. No filtering.")
-    public Response mock_idResolver(@Context UriInfo uriInfo) throws InterruptedException {
+    public Response mock_idResolver(@Context UriInfo uriInfo) {
         // Mock a request object
         LookupRequestHttpPOST request = new LookupRequestHttpPOST();
         request.id = "A-24HA001";
@@ -67,7 +66,7 @@ public class MyApplication {
                     "request as a receipt, and a Location header pointing at the results endpoint.")
     @APIResponse(responseCode = "202", description = "Request accepted for processing; the Location header points at /api/cache/{requestHash}")
     @APIResponse(responseCode = "400", description = "Missing or blank id or context")
-    public Response idResolver(LookupRequestHttpPOST request, @Context UriInfo uriInfo) throws InterruptedException {
+    public Response idResolver(LookupRequestHttpPOST request, @Context UriInfo uriInfo) {
         if (request == null || isBlank(request.id) || isBlank(request.context)) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Both 'id' and 'context' must be provided and non-blank."))
