@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload JaCoCo coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jacoco-report-jdk${{ matrix.java }}
           path: |
@@ -52,7 +52,7 @@ jobs:
 
       - name: Upload Surefire & Failsafe reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports-jdk${{ matrix.java }}
           path: |
