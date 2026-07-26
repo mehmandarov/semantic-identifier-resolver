@@ -355,9 +355,9 @@ class EndToEndLookupIT {
         arangoService.recordPendingRequest(req);
 
         statusEmitter.send(new JsonObject().put("garbage", "no type, no requestHash"));
-        statusEmitter.send(statusEvent("bogus-type", req, "failing-worker"));
-        statusEmitter.send(statusEvent("claimed", req, "failing-worker"));
-        statusEmitter.send(statusEvent("failed", req, "failing-worker")
+        statusEmitter.send(statusEvent("bogus-type", req));
+        statusEmitter.send(statusEvent("claimed", req));
+        statusEmitter.send(statusEvent("failed", req)
                 .put("detail", "upstream source exploded"));
 
         await().atMost(Duration.ofSeconds(30))
@@ -370,14 +370,15 @@ class EndToEndLookupIT {
                         .body("claimedBy[0].worker", equalTo("failing-worker")));
     }
 
-    private static JsonObject statusEvent(String type, LookupQueueRequest req, String worker) {
+    /** Builds a status event as the failing test worker would emit it. */
+    private static JsonObject statusEvent(String type, LookupQueueRequest req) {
         return new JsonObject()
                 .put("type", type)
                 .put("requestID", req.requestID.toString())
                 .put("requestHash", req.requestHash.toString())
                 .put("id", req.id)
                 .put("context", req.context)
-                .put("worker", worker)
+                .put("worker", "failing-worker")
                 .put("at", Instant.now().toString());
     }
 
