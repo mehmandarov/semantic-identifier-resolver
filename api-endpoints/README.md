@@ -13,6 +13,32 @@ You can run your application in dev mode that enables live coding using:
 
 > **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at http://localhost:8080/q/dev/.
 
+### Running the end-to-end test suite
+
+The module includes a Testcontainers-based end-to-end test that starts real
+RabbitMQ and ArangoDB containers and drives the pipeline from HTTP POST to
+cached GET. It lives in `src/test/java/e2e/EndToEndLookupIT.java`, is bound to
+the `failsafe` phase and is skipped by default. A working Docker daemon is
+required.
+
+```shell
+./mvnw verify -DskipITs=false
+```
+
+On Colima, export the Docker socket before running the tests:
+
+```shell
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+### Cache TTL
+
+The gateway ensures a TTL index on the shared ArangoDB cache collection at
+start-up. The retention window is set by `cache.ttl-seconds` in
+`application.properties` (default `3600`). Set it to `0` to disable expiry;
+no TTL index is then created.
+
 ### Packaging and running the application
 
 The application can be packaged using:

@@ -1,17 +1,10 @@
 package queue;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.rabbitmq.client.*;
 import jakarta.enterprise.context.ApplicationScoped;
 import model.LookupQueueRequest;
-import utils.UUIDv5;
+import model.LookupResultElement;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.TimeoutException;
-import java.util.UUID;
+import java.util.List;
 
 @ApplicationScoped
 public class QueueHandler {
@@ -20,13 +13,14 @@ public class QueueHandler {
     /**
      * The processing step of the worker: the plug-in slot where the resolution
      * logic goes. The logic is use-case specific and has to be implemented
-     * separately for each worker, encapsulating one source or one set of rules
-     * (e.g. semantic lifting of tag numbers, or a key-value mapping for one
-     * system). Version 1 logs the request and returns it unchanged; it does
-     * not write results back to the cache yet.
+     * separately for each worker, encapsulating one or several sources or
+     * sets of rules (e.g. semantic lifting of tag numbers, or a key-value
+     * mapping for one system). Version 1 implements the simplest case from
+     * Paper I: with no plug-in logic available, the system returns what it
+     * was told, so the result echoes the input tuple.
      */
-    public String processLookupRequest(LookupQueueRequest lookupReq) {
+    public List<LookupResultElement> processLookupRequest(LookupQueueRequest lookupReq) {
         System.out.println("*************Looked up ID: "+ lookupReq.id + " and context: " + lookupReq.context);
-        return lookupReq.toString();
+        return List.of(new LookupResultElement(lookupReq.id, lookupReq.context));
     }
 }

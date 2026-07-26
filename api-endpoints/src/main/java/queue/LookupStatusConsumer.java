@@ -1,0 +1,52 @@
+package queue;
+
+import cache.ArangoService;
+import io.smallrye.common.annotation.Blocking;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.reactive.messaging.Incoming;
+
+/**
+ * Fan-in half of the lookup pipeline: consumes the status events that the
+ * workers publish (claimed / done / failed) and applies them to the result
+ * cache. This is the only place where worker output reaches the database —
+ * the workers themselves know nothing about the cache, only the two queues.
+ * The writes are safe under redelivery and competing gateway replicas: claims
+ * append to a history list, "done" wins over any other state, and "failed"
+ * never overwrites a successful resolution.
+ */
+@ApplicationScoped
+public class LookupStatusConsumer {
+
+    @Inject
+    ArangoService arangoService;
+
+    @Incoming("lookupStatus")
+    @Blocking
+    public void onStatusEvent(JsonObject event) {
+        String type = event.getString("type");
+        String requestHash = event.getString("requestHash");
+        if (type == null || requestHash == null) {
+            System.err.println("Ignoring malformed status event: " + event);
+            return;
+        }
+        String worker = event.getString("worker", "unknown-worker");
+        String at = event.getString("at");
+        String requestID = event.getString("requestID");
+        String id = event.getString("id");
+        String context = event.getString("context");
+
+        switch (type) {
+            case "claimed" -> arangoService.recordClaim(requestHash, worker, at, requestID, id, context);
+            case "done" -> arangoService.recordResults(requestHash,
+                    event.getJsonArray("results", new JsonArray()).getList(),
+                    worker, at, requestID, id, context);
+            case "failed" -> arangoService.recordFailure(requestHash,
+                    event.getString("detail"), worker, at, requestID, id, context);
+            default -> System.err.println("Ignoring status event of unknown type '" + type
+                    + "' for request: " + requestHash);
+        }
+    }
+}

@@ -108,13 +108,15 @@ public class MyApplication {
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(summary = "CUSTOM: Results endpoint",
             description = "Reports the state of a lookup request by its request hash. " +
-                    "The response code reflects the outcome: 200 done, 202 pending, " +
-                    "404 unknown request hash, 500 worker-reported failure.")
+                    "The response code reflects the outcome: 200 done, 202 pending or " +
+                    "in progress (claimedBy lists the workers that picked the request up), " +
+                    "404 unknown request hash, 500 worker-reported failure, 504 timed out.")
     @APIResponse(responseCode = "200", description = "Lookup done; the body carries the results")
-    @APIResponse(responseCode = "202", description = "Lookup accepted but still pending")
+    @APIResponse(responseCode = "202", description = "Lookup accepted and pending, or claimed by a worker and in progress")
     @APIResponse(responseCode = "400", description = "Blank request hash")
     @APIResponse(responseCode = "404", description = "Unknown request hash")
     @APIResponse(responseCode = "500", description = "Lookup failed on the server side; the body carries the detail")
+    @APIResponse(responseCode = "504", description = "Lookup timed out before any worker completed it")
     public Response get(@PathParam("key") String key) {
         if (isBlank(key)) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -134,15 +136,29 @@ public class MyApplication {
         body.put("context", doc.getAttribute("context"));
         String status = String.valueOf(doc.getAttribute("status"));
         body.put("status", status);
+        // Pick-up history: which worker(s) claimed the request, and when.
+        Object claimedBy = doc.getAttribute("claimedBy");
+        if (claimedBy != null) {
+            body.put("claimedBy", claimedBy);
+        }
         switch (status) {
-            case "done":
+            case ArangoService.STATUS_DONE:
                 body.put("results", doc.getAttribute("results"));
+                // Provenance: which worker answered, and when.
+                body.put("resolvedBy", doc.getAttribute("resolvedBy"));
+                body.put("resolvedAt", doc.getAttribute("resolvedAt"));
                 return Response.ok(body).build();
-            case "pending":
+            case ArangoService.STATUS_PENDING:
+            case ArangoService.STATUS_IN_PROGRESS:
                 return Response.accepted(body).build();
-            case "error":
+            case ArangoService.STATUS_TIMED_OUT:
+                body.put("detail", doc.getAttribute("detail"));
+                return Response.status(Response.Status.GATEWAY_TIMEOUT).entity(body).build();
+            case ArangoService.STATUS_ERROR:
             default:
                 body.put("detail", doc.getAttribute("detail"));
+                body.put("resolvedBy", doc.getAttribute("resolvedBy"));
+                body.put("resolvedAt", doc.getAttribute("resolvedAt"));
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(body).build();
         }
     }
