@@ -10,6 +10,8 @@
 ├── api-lookup-cache/
 │         ├── Dockerfile
 │         └── src/
+├── http/                 # API walkthrough for the IntelliJ HTTP Client
+├── schemas/              # JSON Schemas: the API response contract
 ├── lookup-worker1/
 │         ├── Dockerfile
 │         ├── README.md
