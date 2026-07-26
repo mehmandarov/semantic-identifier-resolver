@@ -249,8 +249,9 @@ Every push and pull request runs the full pipeline via GitHub Actions
   the Testcontainers-backed end-to-end suite. GitHub-hosted `ubuntu-latest`
   runners ship a Docker daemon, so no extra setup is needed for
   Testcontainers.
-- Uploads the JaCoCo coverage reports as workflow artefacts, and Surefire /
-  Failsafe test reports if the run fails.
+- Uploads the Surefire / Failsafe test reports as workflow artefacts if the
+  run fails. Coverage is measured locally via the quarkus-jacoco report in
+  `api-endpoints/target/jacoco-report/`.
 
 Maven dependencies and GitHub Actions themselves are kept up to date by
 Dependabot (`.github/dependabot.yml`, weekly cadence, PRs grouped by Quarkus

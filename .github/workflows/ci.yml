@@ -39,17 +39,6 @@ jobs:
       - name: Build, test and run end-to-end suite
         run: mvn -B -ntp verify -DskipITs=false
 
-      - name: Upload JaCoCo coverage report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: jacoco-report-jdk${{ matrix.java }}
-          path: |
-            api-endpoints/target/jacoco-report/
-            api-endpoints/target/site/jacoco/
-            api-endpoints/target/site/jacoco-it/
-          if-no-files-found: ignore
-
       - name: Upload Surefire & Failsafe reports on failure
         if: failure()
         uses: actions/upload-artifact@v7
@@ -59,3 +48,6 @@ jobs:
             **/target/surefire-reports/
             **/target/failsafe-reports/
           if-no-files-found: ignore
+          # Failure reports are only needed while the breakage is being
+          # investigated; no reason to keep them for the 90-day default.
+          retention-days: 30
