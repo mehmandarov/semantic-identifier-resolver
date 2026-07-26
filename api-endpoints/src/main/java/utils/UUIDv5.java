@@ -1,7 +1,6 @@
 package utils;
 
 import java.nio.ByteOrder;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -59,35 +58,6 @@ public class UUIDv5 {
 
     /**
      * Similar to UUID.nameUUIDFromBytes, but does version 5 (sha-1) not version
-     * 3 (md5) and uses a namespace
-     *
-     * @param namespace
-     *            The namespace to use for this UUID. If null, uses
-     *            00000000-0000-0000-0000-000000000000
-     * @param name
-     *            The bytes to use as the "name" of this hash
-     * @return the UUID object
-     */
-    public static UUID fromBytes(UUID namespace, byte[] name) {
-        if (name == null) {
-            throw new NullPointerException("name == null");
-        }
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
-            if (namespace == null) {
-                md.update(new byte[16]);
-            } else {
-                md.update(asBytes(namespace.getMostSignificantBits(), ByteOrder.BIG_ENDIAN));
-                md.update(asBytes(namespace.getLeastSignificantBits(), ByteOrder.BIG_ENDIAN));
-            }
-            return makeUUID(md.digest(name), 5);
-        } catch (NoSuchAlgorithmException e) {
-            throw new AssertionError(e);
-        }
-    }
-
-    /**
-     * Similar to UUID.nameUUIDFromBytes, but does version 5 (sha-1) not version
      * 3 (md5)
      *
      * @param name
@@ -96,21 +66,6 @@ public class UUIDv5 {
      */
     public static UUID fromUTF8(String name) {
         return UUIDv5.fromBytes(name.getBytes(StandardCharsets.UTF_8));
-    }
-
-    /**
-     * Similar to UUID.nameUUIDFromBytes, but does version 5 (sha-1) not version
-     * 3 (md5) and uses a namespace
-     *
-     * @param namespace
-     *            The namespace to use for this UUID. If null, uses
-     *            00000000-0000-0000-0000-000000000000
-     * @param name
-     *            The string to be encoded in utf-8 to get the bytes to hash
-     * @return the UUID object
-     */
-    public static UUID fromUTF8(UUID namespace, String name) {
-        return UUIDv5.fromBytes(namespace, name.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -139,49 +94,6 @@ public class UUIDv5 {
                 ans |= src[i] & 0xffL;
             }
         }
-        return ans;
-    }
-
-    /**
-     * A helper method for writing uuid objects, which in java store longs not
-     * bytes
-     *
-     * @param data
-     *            A long to write into the dest array
-     * @param dest
-     *            An array of bytes having at least offset+8 elements
-     * @param offset
-     *            Where to start writing a long
-     * @param order
-     *            either ByteOrder.BIG_ENDIAN or ByteOrder.LITTLE_ENDIAN
-     */
-    static void putLong(long data, final byte[] dest, final int offset, final ByteOrder order) {
-        if (order == ByteOrder.BIG_ENDIAN) {
-            for (int i = offset + 7; i >= offset; i -= 1) {
-                dest[i] = (byte) (data & 0xff);
-                data >>= 8;
-            }
-        } else {
-            for (int i = offset; i < offset + 8; i += 1) {
-                dest[i] = (byte) (data & 0xff);
-                data >>= 8;
-            }
-        }
-    }
-
-    /**
-     * A helper method for reading uuid objects, which in java store longs not
-     * bytes
-     *
-     * @param data
-     *            a long to convert to bytes
-     * @param order
-     *            either ByteOrder.BIG_ENDIAN or ByteOrder.LITTLE_ENDIAN
-     * @return an array of 8 bytes
-     */
-    static byte[] asBytes(long data, final ByteOrder order) {
-        byte[] ans = new byte[8];
-        putLong(data, ans, 0, order);
         return ans;
     }
 

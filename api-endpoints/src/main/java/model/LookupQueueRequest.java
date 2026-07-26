@@ -3,9 +3,7 @@ package model;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
-import java.util.ArrayList;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @RegisterForReflection
 public class LookupQueueRequest {
@@ -19,8 +17,6 @@ public class LookupQueueRequest {
     @JsonProperty("requestHash")
     public UUID requestHash;
 
-    ArrayList<LookupResultElement> results;
-
     /**
      * Default constructor required for Jackson serializer
      */
@@ -31,7 +27,6 @@ public class LookupQueueRequest {
         this.context = context;
         this.requestID = UUID.fromString(requestIDStr);
         this.requestHash = UUID.fromString(requestHashStr);
-        this.results = new ArrayList<>();
     }
 
     @Override
@@ -41,7 +36,6 @@ public class LookupQueueRequest {
                 ", context=" + context +
                 ", requestID=" + requestID +
                 ", requestHash=" + requestHash +
-                ", results=" + results.stream().map(Object::toString).collect(Collectors.joining(", ")) +
                 '}';
     }
 }

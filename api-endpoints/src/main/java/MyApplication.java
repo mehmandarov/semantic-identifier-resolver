@@ -1,5 +1,4 @@
 import cache.ArangoService;
-import cache.LookupResultsCacheService;
 import com.arangodb.entity.ArangoDBVersion;
 import com.arangodb.entity.BaseDocument;
 import jakarta.ws.rs.*;
@@ -8,7 +7,6 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import model.LookupQueueRequest;
 import model.LookupRequestHttpPOST;
-import model.LookupResult;
 import utils.UUIDv5;
 
 import jakarta.inject.Inject;
@@ -28,9 +26,6 @@ import java.util.UUID;
 
 @Path("/api")
 public class MyApplication {
-
-    @Inject
-    LookupResultsCacheService lookupCache;
 
     @Inject
     ArangoService arangoService;
@@ -166,17 +161,6 @@ public class MyApplication {
     private static boolean isBlank(String s) {
         return s == null || s.isBlank();
     }
-
-    /*
-    @PUT
-    @Path("/cache/{key}")
-    @Consumes(MediaType.TEXT_PLAIN)
-    @Produces(MediaType.APPLICATION_JSON)
-    public void set(@PathParam("key") String key, String value) {
-        //set HTTP code to "201 Created"
-        lookupCache.set(key, value);
-    }
-    */
 
     @GET
     @Path("/cache/all")
