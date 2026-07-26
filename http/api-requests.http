@@ -25,8 +25,9 @@ GET {{gateway}}/api/internals/arangodb
 
 ### ---------------------------------------------------------------------
 ### Full lookup, step 1: initiate (asynchronous request-reply)
-### Answers 202 Accepted; the Location header points at the results URL.
-### The requestHash is captured for the polling request below.
+### Answers 202 Accepted; resultsUrl in the body (and the Location header)
+### points at the results URL. The requestHash is captured for the polling
+### request below.
 ### A TAG lookup is answered by BOTH worker 1 (same-as: serial number and
 ### EPC descriptor) and worker 2 (part-of: the system) — the poll shows two
 ### claimedBy entries and two reply blocks.
@@ -47,12 +48,14 @@ Content-Type: application/json
 ### ---------------------------------------------------------------------
 ### Full lookup, step 2: poll the results URL
 ### 202 while pending/in_progress (body carries claimedBy once a worker
-### picked the request up), 200 when done — results holds one
-### {worker, at, reply} block per answering worker, where reply is that
-### worker's list of {id, context, relationship} elements — 500 on error,
-### 504 when timed out. Re-run until the status flips to done.
+### picked the request up), 200 when done — results aggregates the distinct
+### reply elements across workers, resultsByWorker holds one
+### {worker, at, reply} block per answering worker — 500 on error, 504 when
+### timed out. Response shapes: see schemas/lookup-state.schema.json.
+### Re-run until the status flips to done. A repeat POST of the same lookup
+### answers from the cache without re-queueing work.
 ### ---------------------------------------------------------------------
-GET {{gateway}}/api/cache/{{requestHash}}
+GET {{gateway}}/api/lookup/results/{{requestHash}}
 
 ### Validation: blank id answers 400
 POST {{gateway}}/api/lookup
@@ -64,7 +67,7 @@ Content-Type: application/json
 }
 
 ### Unknown request hash answers 404
-GET {{gateway}}/api/cache/00000000-0000-0000-0000-000000000000
+GET {{gateway}}/api/lookup/results/00000000-0000-0000-0000-000000000000
 
 ### ---------------------------------------------------------------------
 ### EPC descriptor lookup — answered by worker 3 alone: the serial number
@@ -84,7 +87,21 @@ Content-Type: application/json
 %}
 
 ### Poll the EPC descriptor lookup
-GET {{gateway}}/api/cache/{{requestHashEpc}}
+GET {{gateway}}/api/lookup/results/{{requestHashEpc}}
+
+### ---------------------------------------------------------------------
+### Hard refresh: a repeat POST normally answers from the cache without
+### queueing new work; the resultsHardRefresh header forces the lookup
+### through the workers again (fresh claim, rebuilt replies).
+### ---------------------------------------------------------------------
+POST {{gateway}}/api/lookup
+Content-Type: application/json
+resultsHardRefresh: true
+
+{
+  "id": "A-24HA001",
+  "context": "TAG"
+}
 
 ### ---------------------------------------------------------------------
 ### A context no worker covers: every worker ignores it, the request stays
@@ -103,5 +120,6 @@ Content-Type: application/json
     client.global.set("requestHashOrphan", response.body.requestHash);
 %}
 
-### Poll the unhandled-context lookup: 202 while pending, 504 once swept
-GET {{gateway}}/api/cache/{{requestHashOrphan}}
+### Poll the unhandled-context lookup: 202 while pending, 504 once swept.
+### A new POST of the same lookup after the 504 re-queues it (retry).
+GET {{gateway}}/api/lookup/results/{{requestHashOrphan}}

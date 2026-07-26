@@ -157,10 +157,52 @@ public class ArangoService {
     }
 
     /**
+     * Cache-aware intake decision for one lookup occurrence. Ensures a cache
+     * document exists for the request and decides whether the request must
+     * be published to the workers: a fresh lookup is recorded as pending and
+     * published; a lookup that previously timed out or failed — or any cached
+     * lookup when the caller demands a hard refresh — is reset to pending
+     * (fresh requestID and createdAt; stale detail, replies and provenance
+     * cleared — the claim history stays) and re-published; a lookup that is
+     * already pending, in progress or done stands as cached, and no new work
+     * is queued.
+     */
+    public boolean prepareRequestForPublish(LookupQueueRequest request, boolean hardRefresh) {
+        String key = request.requestHash.toString();
+        BaseDocument existing = getRequestDocument(key);
+        if (existing == null) {
+            recordPendingRequest(request);
+            return true;
+        }
+        String status = String.valueOf(existing.getAttribute("status"));
+        boolean retryable = STATUS_TIMED_OUT.equals(status) || STATUS_ERROR.equals(status);
+        if (hardRefresh || retryable) {
+            String aql = """
+                    UPDATE @key WITH { status: "pending", requestID: @requestID,
+                                       createdAt: @now, detail: null,
+                                       resultsByWorker: null, resolvedBy: null, resolvedAt: null }
+                    IN @@coll OPTIONS { keepNull: false }
+                    """;
+            try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
+                    Map.of("@coll", dbCollection, "key", key,
+                            "requestID", request.requestID.toString(),
+                            "now", Instant.now().getEpochSecond()))) {
+                System.out.println("Reset " + status + " lookup for "
+                        + (hardRefresh ? "hard refresh" : "retry") + ": " + key);
+            } catch (ArangoDBException | IOException e) {
+                System.err.println("Failed to reset lookup for reprocessing: " + key + "; " + e.getMessage());
+            }
+            return true;
+        }
+        System.out.println("Lookup already " + status + ", cached state stands: " + key);
+        return false;
+    }
+
+    /**
      * Merges a worker's reply into the results of a lookup request and marks
-     * it done. Results are aggregated per worker: each entry in the document's
-     * results list is one {@code {worker, at, reply}} block, so answers from
-     * several workers converge without overwriting each other, and a
+     * it done. Replies are aggregated per worker: each entry in the document's
+     * resultsByWorker list is one {@code {worker, at, reply}} block, so answers
+     * from several workers converge without overwriting each other, and a
      * redelivered reply replaces the worker's previous block instead of
      * duplicating it. A late reply deliberately overwrites a timed-out (or
      * error) state — the resolution is still useful to cache — and clears any
@@ -172,11 +214,11 @@ public class ArangoService {
                 LET replyBlock = { worker: @worker, at: @at, reply: @reply }
                 UPSERT { _key: @key }
                 INSERT { _key: @key, requestID: @requestID, id: @id, context: @context,
-                         status: "done", createdAt: @now, results: [ replyBlock ],
+                         status: "done", createdAt: @now, resultsByWorker: [ replyBlock ],
                          resolvedBy: @worker, resolvedAt: @at }
                 UPDATE { status: "done",
-                         results: APPEND(
-                             (FOR r IN NOT_NULL(OLD.results, []) FILTER r.worker != @worker RETURN r),
+                         resultsByWorker: APPEND(
+                             (FOR r IN NOT_NULL(OLD.resultsByWorker, []) FILTER r.worker != @worker RETURN r),
                              [ replyBlock ]),
                          resolvedBy: @worker, resolvedAt: @at, detail: null }
                 IN @@coll OPTIONS { keepNull: false }

@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Lookup state",
+  "description": "Body of GET /api/lookup/results/{requestHash}: the state of one lookup request. The status field selects which extra fields are present: done carries results (the distinct reply elements aggregated across workers) and resultsByWorker (one {worker, at, reply} block per answering worker, the provenance view); error and timed-out carry detail; pending carries the base fields only. claimedBy lists every pick-up of the request by a worker, across retries.",
+  "type": "object",
+  "required": ["requestID", "requestHash", "id", "context", "status"],
+  "properties": {
+    "requestID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "requestHash": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "context": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "done", "error", "timed-out"]
+    },
+    "claimedBy": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/claim" }
+    },
+    "results": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/resultElement" }
+    },
+    "resultsByWorker": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/workerReply" }
+    },
+    "resolvedBy": { "type": "string", "minLength": 1 },
+    "resolvedAt": { "type": "string", "minLength": 1 },
+    "detail": { "type": "string" }
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "description": "pending / in_progress: no outcome fields yet",
+      "properties": { "status": { "enum": ["pending", "in_progress"] } },
+      "not": { "anyOf": [ { "required": ["results"] }, { "required": ["detail"] } ] }
+    },
+    {
+      "description": "done: aggregated results plus per-worker provenance",
+      "properties": { "status": { "enum": ["done"] } },
+      "required": ["results", "resultsByWorker", "resolvedBy", "resolvedAt"]
+    },
+    {
+      "description": "error: worker-reported failure",
+      "properties": { "status": { "enum": ["error"] } },
+      "required": ["detail"]
+    },
+    {
+      "description": "timed-out: no worker completed the lookup in time",
+      "properties": { "status": { "enum": ["timed-out"] } },
+      "required": ["detail"]
+    }
+  ],
+  "definitions": {
+    "claim": {
+      "type": "object",
+      "required": ["worker", "at"],
+      "properties": {
+        "worker": { "type": "string", "minLength": 1 },
+        "at": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "resultElement": {
+      "type": "object",
+      "required": ["id", "context", "relationship"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "context": { "type": "string", "minLength": 1 },
+        "relationship": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "workerReply": {
+      "type": "object",
+      "required": ["worker", "at", "reply"],
+      "properties": {
+        "worker": { "type": "string", "minLength": 1 },
+        "at": { "type": "string", "minLength": 1 },
+        "reply": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/resultElement" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

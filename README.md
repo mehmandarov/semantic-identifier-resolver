@@ -65,8 +65,8 @@ polls until the lookup completes.
 
 | Method | Path                       | Codes                                                                                                                    |
 |--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| POST   | `/api/lookup`              | `202` accepted + `Location`; `400` blank `id`/`context`                                                                  |
-| GET    | `/api/cache/{requestHash}` | `200` done (with `results`); `202` pending or in progress (with `claimedBy`); `500` error (with `detail`); `504` timed out; `404` unknown hash; `400` blank key |
+| POST   | `/api/lookup`              | `202` accepted; `resultsUrl` in the body and the `Location` header point at the results URL. A repeat POST for a lookup that is pending, in progress or done answers from the cache without queueing new work — unless the `resultsHardRefresh: true` header forces reprocessing; a timed-out or failed lookup is re-queued (retry). `400` blank `id`/`context` |
+| GET    | `/api/lookup/results/{requestHash}` | `200` done (with `results`, the aggregated distinct reply elements, and `resultsByWorker`, one block per answering worker); `202` pending or in progress (with `claimedBy`); `500` error (with `detail`); `504` timed out; `404` unknown hash; `400` blank key |
 | GET    | `/api/ping`                | `200` liveness check                                                                                                     |
 
 Example:
@@ -76,23 +76,29 @@ curl -i -X POST http://localhost:9081/api/lookup \
   -H 'Content-Type: application/json' \
   -d '{"id": "A-24HA001", "context": "TAG"}'
 # HTTP/1.1 202 Accepted
-# Location: http://localhost:9081/api/cache/caebb70d-cf1e-5176-afaa-ca094a9d49ac
+# Location: http://localhost:9081/api/lookup/results/caebb70d-cf1e-5176-afaa-ca094a9d49ac
+# {"requestID": "…", "requestHash": "caebb70d-…", "id": "A-24HA001", "context": "TAG",
+#  "resultsUrl": "http://localhost:9081/api/lookup/results/caebb70d-cf1e-5176-afaa-ca094a9d49ac"}
 
-curl -i http://localhost:9081/api/cache/caebb70d-cf1e-5176-afaa-ca094a9d49ac
+curl -i http://localhost:9081/api/lookup/results/caebb70d-cf1e-5176-afaa-ca094a9d49ac
 # HTTP/1.1 202 Accepted   (status: pending)
 ```
 
 Alternatively, [http/api-requests.http](http/api-requests.http) walks the whole API in the
-IntelliJ HTTP Client (or VS Code REST Client): liveness checks, the full
-lookup flow with the `requestHash` captured automatically for the polling
-request, and the 400/404 error cases. Hosts are defined per environment in
+IntelliJ HTTP Client (or VS Code REST Client): liveness checks for the gateway
+and all three workers, the full lookup flow with the `requestHash` captured
+automatically for the polling requests, an EPC descriptor lookup, a hard
+refresh (`resultsHardRefresh` header), an unhandled-context lookup that times
+out, and the 400/404 error cases. Hosts are defined per environment in
 [http/http-client.env.json](http/http-client.env.json) — pick `dev` when prompted.
 
 The intake records each request as *pending* in the cache before publishing, so the
 results URL resolves immediately. The worker's processing step is the plug-in slot:
-the resolution logic is use-case specific and is implemented per worker. Results are
-grouped per answering worker: each entry in `results` is a `{worker, at, reply}`
-block, and each reply element carries `{id, context, relationship}`, where
+the resolution logic is use-case specific and is implemented per worker. A completed
+lookup answers with two views of the same data: `results`, the aggregated distinct
+reply elements across all answering workers, and `resultsByWorker`, one
+`{worker, at, reply}` block per worker, so every element's provenance stays
+visible. Each reply element carries `{id, context, relationship}`, where
 `relationship` states how the returned identifier relates to the input identifier,
 per the Paper I interface: `same-as` when both denote the same asset (equal, or an
 equivalent identifier in another context), `part-of`/`has-part` when the referents
@@ -120,7 +126,7 @@ small hardcoded mappings standing in for real systems:
 Demo data: tag `A-24HA001` ≡ serial `SN-1042-77` ≡ EPC descriptor `EJ101A`,
 part of `SYSTEM-24` (and a second set: `A-24HA002` / `SN-1042-78` / `EJ101B`).
 A `TAG` lookup is answered by workers 1 *and* 2 — two `claimedBy` entries and
-two reply blocks in `results` — while an `EPC_DESCRIPTOR` lookup is answered
+two blocks in `resultsByWorker` — while an `EPC_DESCRIPTOR` lookup is answered
 by worker 3 alone. A known context with an unknown id answers `done` with an
 empty reply: the source was consulted and had nothing.
 
@@ -143,6 +149,13 @@ Flow of one request:
 
 1. `POST /api/lookup` — the gateway records the request as `pending` in the
    cache, publishes it to the work queue and answers `202` + `Location`.
+   The intake is cache-aware: a repeat POST for a lookup that is already
+   pending, in progress or done answers from the cache without queueing new
+   work, while a timed-out or failed lookup is reset to `pending` (fresh
+   `requestID` and `createdAt`, stale `detail` cleared) and re-published as
+   a retry. Sending the `resultsHardRefresh: true` header forces this reset
+   for any cached lookup — old replies and provenance are dropped and the
+   lookup runs through the workers again (the claim history is kept).
 2. Every worker sees the request (each worker consumes from its own queue
    bound to the shared exchange). A worker whose `worker.contexts` does not
    cover the request's context ignores it without a claim; each worker that
@@ -155,8 +168,8 @@ Flow of one request:
 4. The worker publishes `done` (with `reply`, a list of
    `{id, context, relationship}` elements) or `failed` (with `detail`).
 5. The gateway applies the outcome: each worker's reply is merged into the
-   cache document's `results` as a `{worker, at, reply}` block keyed by
-   worker name — replies from several workers converge without overwriting
+   cache document's `resultsByWorker` as a `{worker, at, reply}` block keyed
+   by worker name — replies from several workers converge without overwriting
    each other, and a redelivered reply replaces the worker's previous block.
    `resolvedBy`/`resolvedAt` track the latest reply. A failure marks the
    lookup `error` but never overwrites results another worker already
@@ -166,7 +179,7 @@ Flow of one request:
    one mechanism covers both "never picked up" and "worker died mid-job".
    A result arriving *after* the timeout still resolves the lookup
    (accept-late policy).
-7. Polls of `GET /api/cache/{requestHash}` reflect the state: `202` while
+7. Polls of `GET /api/lookup/results/{requestHash}` reflect the state: `202` while
    `pending`/`in_progress` (body carries `claimedBy`), `200` when `done`,
    `500` on `error`, `504` when `timed-out`.
 
@@ -176,6 +189,21 @@ Timeout configuration (gateway `application.properties`):
 |-----------------------------|---------|-------------------------------------------------------------------------|
 | `lookup.timeout-seconds`    | `60`    | Window after `createdAt` before a non-finished lookup is timed out. `0` or negative disables the sweep. |
 | `lookup.timeout-sweep-every`| `10s`   | Cadence of the sweep (any Quarkus duration; `off` disables the trigger). |
+
+## API contract (JSON Schema)
+
+The response bodies of the public API are specified as JSON Schema files in
+[schemas/](schemas/), shared with clients as the contract:
+
+- [lookup-receipt.schema.json](schemas/lookup-receipt.schema.json) — the `202`
+  receipt of `POST /api/lookup`.
+- [lookup-state.schema.json](schemas/lookup-state.schema.json) — every state
+  answered by `GET /api/lookup/results/{requestHash}` (`pending`, `in_progress`,
+  `done`, `error`, `timed-out`), including which fields each status carries.
+
+The end-to-end suite validates live responses of every state against these
+schemas (rest-assured's `json-schema-validator`), so a contract change that
+is not reflected in the schema files fails CI.
 
 
 ## Manual start of services
@@ -225,9 +253,9 @@ gateway — worker-originated fields arrive as status events):
 | `id`          | string          | gateway on POST                                     | Business ID being looked up                |
 | `context`     | string          | gateway on POST                                     | Business context                           |
 | `status`      | `pending` / `in_progress` / `done` / `error` / `timed-out` | gateway       | Current lifecycle state                    |
-| `createdAt`   | number (epoch s)| gateway on POST (or event on recreate)              | **TTL anchor** and timeout anchor — never overwritten by updates |
-| `claimedBy`   | list of `{worker, at}` | `claimed` events                             | Pick-up history: which worker(s) claimed the request |
-| `results`     | list of `{worker, at, reply}` | `done` events                 | One block per answering worker; `reply` is that worker's resolved elements `{id, context, relationship}` |
+| `createdAt`   | number (epoch s)| gateway on POST (or event on recreate)              | **TTL anchor** and timeout anchor — refreshed only when a timed-out/failed lookup is retried by a new POST |
+| `claimedBy`   | list of `{worker, at}` | `claimed` events                             | Pick-up history: which worker(s) claimed the request, across retries |
+| `resultsByWorker` | list of `{worker, at, reply}` | `done` events             | One block per answering worker; `reply` is that worker's resolved elements `{id, context, relationship}`. `GET` also answers `results`: the distinct reply elements aggregated across workers, computed on read |
 | `resolvedBy`  | string          | `done`/`failed` events                              | Provenance: which worker answered last     |
 | `resolvedAt`  | string (ISO instant) | `done`/`failed` events                         | Provenance: when it answered               |
 | `detail`      | string          | `failed` events or the timeout sweep                | Human-readable failure reason              |
@@ -243,7 +271,7 @@ Deletion is done entirely by **ArangoDB itself**, not by the application:
    that scans the TTL index and removes any document whose
    `createdAt + expireAfter <= now`.
 3. Deletion is best-effort and eventually consistent: an expired document
-   may briefly still be returned by a `GET /api/cache/{hash}` until the
+   may briefly still be returned by a `GET /api/lookup/results/{hash}` until the
    next TTL sweep. Once removed, the endpoint answers `404`, and a fresh
    `POST` for the same `(id, context)` starts a new cache entry.
 
@@ -270,7 +298,7 @@ Restarting the gateway against an ArangoDB instance that already contains
 The `api-endpoints` module ships a full end-to-end test suite
 (`e2e.EndToEndLookupIT`) that exercises the whole pipeline in a single JVM:
 `POST /api/lookup` → RabbitMQ → in-test worker consumer → status events →
-gateway status consumer → ArangoDB → `GET /api/cache/{hash}` → cached repeat
+gateway status consumer → ArangoDB → `GET /api/lookup/results/{hash}` → cached repeat
 lookup, plus the in-progress, timed-out, accept-late and multi-worker
 fan-in paths.
 

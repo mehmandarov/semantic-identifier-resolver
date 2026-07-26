@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Lookup receipt",
+  "description": "Body of the 202 response to POST /api/lookup: the accepted request plus the results URL, which the Location header also points at.",
+  "type": "object",
+  "required": ["requestID", "requestHash", "id", "context", "resultsUrl"],
+  "properties": {
+    "requestID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "requestHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "id": { "type": "string", "minLength": 1 },
+    "context": { "type": "string", "minLength": 1 },
+    "resultsUrl": { "type": "string", "format": "uri" }
+  },
+  "additionalProperties": false
+}

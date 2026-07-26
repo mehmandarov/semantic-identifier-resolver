@@ -14,6 +14,7 @@ import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.junit.jupiter.api.Test;
 import utils.UUIDv5;
 
+import java.io.File;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -21,9 +22,11 @@ import java.util.Map;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
+import static io.restassured.module.jsv.JsonSchemaValidator.matchesJsonSchema;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,6 +52,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @QuarkusTestResource(IntegrationEnvResource.class)
 class EndToEndLookupIT {
 
+    /** The JSON contract of the API, shared with clients (repo /schemas). */
+    static final File RECEIPT_SCHEMA = new File("../schemas/lookup-receipt.schema.json");
+    static final File STATE_SCHEMA = new File("../schemas/lookup-state.schema.json");
+
     @Inject ArangoDB arango;
     @Inject ArangoService arangoService;
 
@@ -65,31 +72,40 @@ class EndToEndLookupIT {
                 .then()
                     .statusCode(202)
                     .header("Location", notNullValue())
+                    .body(matchesJsonSchema(RECEIPT_SCHEMA))
                     .body("requestHash", notNullValue())
                     .body("requestID", notNullValue())
+                    .body("resultsUrl", notNullValue())
                     .extract().response();
 
         String location = accepted.getHeader("Location");
         String requestHash = accepted.jsonPath().getString("requestHash");
         assertNotNull(location);
-        assertTrue(location.endsWith("/api/cache/" + requestHash),
+        assertTrue(location.endsWith("/api/lookup/results/" + requestHash),
                 "Location should point at the results URL for the requestHash");
+        assertEquals(location, accepted.jsonPath().getString("resultsUrl"),
+                "Body resultsUrl must match the Location header");
 
         // Poll the results endpoint until the simulated worker has written results.
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(250))
-                .untilAsserted(() -> given().when().get("/api/cache/{k}", requestHash)
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", requestHash)
                         .then().statusCode(200)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
                         .body("status", equalTo("done"))
                         .body("id", equalTo("A-24HA001"))
                         .body("context", equalTo("TAG"))
+                        // Aggregated view: the distinct reply elements.
                         .body("results.size()", equalTo(1))
-                        .body("results[0].worker", equalTo(SimulatedWorker.WORKER_NAME))
-                        .body("results[0].at", notNullValue())
-                        .body("results[0].reply.size()", equalTo(1))
-                        .body("results[0].reply[0].id", equalTo("A-24HA001"))
-                        .body("results[0].reply[0].context", equalTo("TAG"))
-                        .body("results[0].reply[0].relationship", equalTo("same-as"))
+                        .body("results[0].id", equalTo("A-24HA001"))
+                        .body("results[0].context", equalTo("TAG"))
+                        .body("results[0].relationship", equalTo("same-as"))
+                        // Provenance view: one block per answering worker.
+                        .body("resultsByWorker.size()", equalTo(1))
+                        .body("resultsByWorker[0].worker", equalTo(SimulatedWorker.WORKER_NAME))
+                        .body("resultsByWorker[0].at", notNullValue())
+                        .body("resultsByWorker[0].reply.size()", equalTo(1))
+                        .body("resultsByWorker[0].reply[0].id", equalTo("A-24HA001"))
                         .body("resolvedBy", equalTo(SimulatedWorker.WORKER_NAME))
                         // Pick-up tracking: the claim event was applied too.
                         .body("claimedBy.size()", greaterThanOrEqualTo(1))
@@ -97,7 +113,7 @@ class EndToEndLookupIT {
 
         // A second GET should be served straight from the cached document,
         // returning identical content without touching the queue.
-        given().when().get("/api/cache/{k}", requestHash)
+        given().when().get("/api/lookup/results/{k}", requestHash)
                 .then().statusCode(200)
                 .body("requestHash", equalTo(requestHash))
                 .body("status", equalTo("done"));
@@ -112,7 +128,7 @@ class EndToEndLookupIT {
                 .then().statusCode(202).extract().jsonPath().getString("requestHash");
 
         await().atMost(Duration.ofSeconds(30))
-                .until(() -> given().when().get("/api/cache/{k}", hash1)
+                .until(() -> given().when().get("/api/lookup/results/{k}", hash1)
                         .then().extract().statusCode() == 200);
 
         String hash2 = given().contentType("application/json").body(body)
@@ -121,9 +137,79 @@ class EndToEndLookupIT {
 
         assertEquals(hash1, hash2, "Same (id, context) must resolve to the same requestHash");
 
-        // The cache document was left untouched by the second POST — still done.
-        given().when().get("/api/cache/{k}", hash2)
-                .then().statusCode(200).body("status", equalTo("done"));
+        // The cache answers the repeat POST without queueing new work: the
+        // document is untouched — still done, and claimed exactly once.
+        given().when().get("/api/lookup/results/{k}", hash2)
+                .then().statusCode(200)
+                .body("status", equalTo("done"))
+                .body("claimedBy.size()", equalTo(1));
+    }
+
+    @Test
+    void repeatPost_afterTimeout_retriesAndResolves() {
+        // A POST for a lookup that previously timed out is a retry: the
+        // document is reset to pending and the request is re-published, so a
+        // worker can answer it after all. The claim history survives.
+        String id = "R-RETRY-007";
+        String ctx = "TAG";
+        UUID hash = UUIDv5.fromUTF8(id.toUpperCase() + "_" + ctx.toUpperCase());
+        BaseDocument doc = new BaseDocument(hash.toString());
+        doc.addAttribute("requestID", UUID.randomUUID().toString());
+        doc.addAttribute("id", id);
+        doc.addAttribute("context", ctx);
+        doc.addAttribute("status", "timed-out");
+        doc.addAttribute("detail", "Lookup timed out after 5 seconds without completion.");
+        doc.addAttribute("createdAt", Instant.now().getEpochSecond() - 100);
+        arango.db("idekanin").collection("id_request_cache").insertDocument(doc);
+
+        given().contentType("application/json").body(Map.of("id", id, "context", ctx))
+                .when().post("/api/lookup")
+                .then().statusCode(202);
+
+        await().atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(250))
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash.toString())
+                        .then().statusCode(200)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
+                        .body("status", equalTo("done"))
+                        .body("detail", nullValue())
+                        .body("results[0].id", equalTo(id)));
+    }
+
+    @Test
+    void hardRefreshHeader_forcesReprocessingOfCachedLookup() {
+        // A plain repeat POST answers from the cache (see repeatPost tests);
+        // the resultsHardRefresh header is the escape hatch that forces the
+        // lookup through the workers again — a fresh claim lands, the reply
+        // blocks are rebuilt, and provenance is refreshed.
+        Map<String, String> body = Map.of("id", "H-REFRESH-008", "context", "TAG");
+
+        String hash = given().contentType("application/json").body(body)
+                .when().post("/api/lookup")
+                .then().statusCode(202).extract().jsonPath().getString("requestHash");
+
+        await().atMost(Duration.ofSeconds(30))
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash)
+                        .then().statusCode(200)
+                        .body("claimedBy.size()", equalTo(1)));
+
+        given().contentType("application/json")
+                .header("resultsHardRefresh", "true")
+                .body(body)
+                .when().post("/api/lookup")
+                .then().statusCode(202);
+
+        // The lookup went through the pipeline again: claim history grows,
+        // and the state settles back to done, schema-valid.
+        await().atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(250))
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash)
+                        .then().statusCode(200)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
+                        .body("status", equalTo("done"))
+                        .body("claimedBy.size()", equalTo(2))
+                        .body("resultsByWorker.size()", equalTo(1))
+                        .body("results[0].id", equalTo("H-REFRESH-008")));
     }
 
     @Test
@@ -136,7 +222,7 @@ class EndToEndLookupIT {
 
     @Test
     void get_unknownHash_returns404() {
-        given().when().get("/api/cache/00000000-0000-0000-0000-000000000000")
+        given().when().get("/api/lookup/results/00000000-0000-0000-0000-000000000000")
                 .then().statusCode(404).body("error", notNullValue());
     }
 
@@ -187,8 +273,9 @@ class EndToEndLookupIT {
 
         arangoService.recordPendingRequest(req);
 
-        given().when().get("/api/cache/{k}", hash.toString())
+        given().when().get("/api/lookup/results/{k}", hash.toString())
                 .then().statusCode(202)
+                .body(matchesJsonSchema(STATE_SCHEMA))
                 .body("status", equalTo("pending"))
                 .body("id", equalTo(id))
                 .body("context", equalTo(ctx))
@@ -234,8 +321,9 @@ class EndToEndLookupIT {
         arangoService.recordClaim(hash.toString(), "test-worker-A", Instant.now().toString(),
                 req.requestID.toString(), id, ctx);
 
-        given().when().get("/api/cache/{k}", hash.toString())
+        given().when().get("/api/lookup/results/{k}", hash.toString())
                 .then().statusCode(202)
+                .body(matchesJsonSchema(STATE_SCHEMA))
                 .body("status", equalTo("in_progress"))
                 .body("claimedBy.size()", equalTo(1))
                 .body("claimedBy[0].worker", equalTo("test-worker-A"))
@@ -258,8 +346,9 @@ class EndToEndLookupIT {
 
         await().atMost(Duration.ofSeconds(15))
                 .pollInterval(Duration.ofMillis(250))
-                .untilAsserted(() -> given().when().get("/api/cache/{k}", key)
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", key)
                         .then().statusCode(504)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
                         .body("status", equalTo("timed-out"))
                         .body("detail", notNullValue()));
     }
@@ -283,11 +372,12 @@ class EndToEndLookupIT {
                 List.of(Map.of("id", "T-LATE-002", "context", "TAG", "relationship", "same-as")),
                 "late-worker", Instant.now().toString(), requestID, "T-LATE-002", "TAG");
 
-        given().when().get("/api/cache/{k}", key)
+        given().when().get("/api/lookup/results/{k}", key)
                 .then().statusCode(200)
+                .body(matchesJsonSchema(STATE_SCHEMA))
                 .body("status", equalTo("done"))
-                .body("results[0].worker", equalTo("late-worker"))
-                .body("results[0].reply[0].id", equalTo("T-LATE-002"))
+                .body("results[0].id", equalTo("T-LATE-002"))
+                .body("resultsByWorker[0].worker", equalTo("late-worker"))
                 .body("resolvedBy", equalTo("late-worker"))
                 .body("detail", nullValue());
     }
@@ -295,30 +385,36 @@ class EndToEndLookupIT {
     @Test
     void multipleWorkers_repliesAreAttributedPerWorker_andIdempotent() {
         // Fan-in: each worker's reply lands as its own {worker, at, reply}
-        // block, so answers from several workers converge without clobbering
-        // each other, and a redelivered reply replaces the worker's previous
-        // block instead of duplicating it.
+        // block in resultsByWorker, while results aggregates the distinct
+        // elements across workers. A redelivered reply replaces the worker's
+        // previous block instead of duplicating it.
         String key = UUID.randomUUID().toString();
         String requestID = UUID.randomUUID().toString();
         String at = Instant.now().toString();
+        Map<String, String> shared = Map.of("id", "SN-SHARED", "context", "SERIAL", "relationship", "same-as");
         arangoService.recordResults(key,
-                List.of(Map.of("id", "M-1", "context", "TAG", "relationship", "same-as")),
+                List.of(Map.of("id", "M-1", "context", "TAG", "relationship", "same-as"), shared),
                 "worker-1", at, requestID, "M-FANIN-006", "TAG");
         arangoService.recordResults(key,
-                List.of(Map.of("id", "M-1-SAP", "context", "SAP", "relationship", "part-of")),
+                List.of(Map.of("id", "M-1-SAP", "context", "SAP", "relationship", "part-of"), shared),
                 "worker-2", at, requestID, "M-FANIN-006", "TAG");
         // Redelivery of worker-1's reply: replaces its block, no duplicate.
         arangoService.recordResults(key,
-                List.of(Map.of("id", "M-1-v2", "context", "TAG", "relationship", "same-as")),
+                List.of(Map.of("id", "M-1-v2", "context", "TAG", "relationship", "same-as"), shared),
                 "worker-1", at, requestID, "M-FANIN-006", "TAG");
 
-        given().when().get("/api/cache/{k}", key)
+        given().when().get("/api/lookup/results/{k}", key)
                 .then().statusCode(200)
+                .body(matchesJsonSchema(STATE_SCHEMA))
                 .body("status", equalTo("done"))
-                .body("results.size()", equalTo(2))
-                .body("results.find { it.worker == 'worker-2' }.reply[0].id", equalTo("M-1-SAP"))
-                .body("results.find { it.worker == 'worker-2' }.reply[0].relationship", equalTo("part-of"))
-                .body("results.find { it.worker == 'worker-1' }.reply[0].id", equalTo("M-1-v2"))
+                .body("resultsByWorker.size()", equalTo(2))
+                .body("resultsByWorker.find { it.worker == 'worker-2' }.reply[0].id", equalTo("M-1-SAP"))
+                .body("resultsByWorker.find { it.worker == 'worker-2' }.reply[0].relationship", equalTo("part-of"))
+                .body("resultsByWorker.find { it.worker == 'worker-1' }.reply[0].id", equalTo("M-1-v2"))
+                // Aggregated view: distinct elements only — the shared element
+                // reported by both workers appears once.
+                .body("results.size()", equalTo(3))
+                .body("results.id", hasItems("M-1-SAP", "M-1-v2", "SN-SHARED"))
                 // resolvedBy/resolvedAt track the latest reply.
                 .body("resolvedBy", equalTo("worker-1"));
     }
@@ -336,7 +432,7 @@ class EndToEndLookupIT {
         arangoService.recordFailure(key, "source unreachable", "worker-broken", at,
                 requestID, "M-MULTI-004", "TAG");
 
-        given().when().get("/api/cache/{k}", key)
+        given().when().get("/api/lookup/results/{k}", key)
                 .then().statusCode(200)
                 .body("status", equalTo("done"))
                 .body("resolvedBy", equalTo("worker-ok"));
@@ -362,8 +458,9 @@ class EndToEndLookupIT {
 
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(250))
-                .untilAsserted(() -> given().when().get("/api/cache/{k}", hash.toString())
+                .untilAsserted(() -> given().when().get("/api/lookup/results/{k}", hash.toString())
                         .then().statusCode(500)
+                        .body(matchesJsonSchema(STATE_SCHEMA))
                         .body("status", equalTo("error"))
                         .body("detail", equalTo("upstream source exploded"))
                         .body("resolvedBy", equalTo("failing-worker"))
@@ -396,8 +493,9 @@ class EndToEndLookupIT {
         doc.addAttribute("createdAt", Instant.now().getEpochSecond());
         arango.db("idekanin").collection("id_request_cache").insertDocument(doc);
 
-        given().when().get("/api/cache/{k}", key)
+        given().when().get("/api/lookup/results/{k}", key)
                 .then().statusCode(500)
+                .body(matchesJsonSchema(STATE_SCHEMA))
                 .body("status", equalTo("error"))
                 .body("detail", equalTo("upstream source unreachable"))
                 .body("resolvedBy", equalTo("e2e-test-seed"));
@@ -427,11 +525,11 @@ class EndToEndLookupIT {
     }
 
     @Test
-    void cacheAllEndpoint_returns501NotImplemented() {
-        // Contract check: the /cache/all endpoint is a documented placeholder.
-        // If someone ever wires it up, this test should fail loudly and force
-        // the caller to add real coverage.
-        given().when().get("/api/cache/all")
+    void resultsAllEndpoint_returns501NotImplemented() {
+        // Contract check: the /api/lookup/results/all endpoint is a documented
+        // placeholder. If someone ever wires it up, this test should fail
+        // loudly and force the caller to add real coverage.
+        given().when().get("/api/lookup/results/all")
                 .then().statusCode(501);
     }
 }
