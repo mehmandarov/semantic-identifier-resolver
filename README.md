@@ -42,6 +42,7 @@ All containers, ports and networks are defined in the [compose.yaml](compose.yam
 | Lookup Worker 3                 | lookup-worker-3 | http://localhost:9087/  | `EPC_DESCRIPTOR` → serial number (`same-as`) |
 | RabbitMQ (Management Interface) | some-rabbit     | http://localhost:15672/ | Development only: `guest`/`guest` |
 | RabbitMQ (Queue)                | some-rabbit     | http://localhost:5672/  |                                   |
+| Jaeger (Tracing UI)             | some-jaeger     | http://localhost:16686/ | Per-lookup trace waterfall        |
 | ArangoDB (Cache)                | some-arangodb   | http://localhost:8529/  |                                   |
 
 
@@ -206,6 +207,22 @@ The response bodies of the public API are specified as JSON Schema files in
 The end-to-end suite validates live responses of every state against these
 schemas (rest-assured's `json-schema-validator`), so a contract change that
 is not reflected in the schema files fails CI.
+
+## Tracing
+
+Every service ships [OpenTelemetry](https://quarkus.io/guides/opentelemetry)
+(`quarkus-opentelemetry`) and exports traces over OTLP to the Jaeger
+container — open http://localhost:16686/ and select a service to see the
+per-lookup waterfall. Trace context propagates through the RabbitMQ message
+headers, so one `POST /api/lookup` shows as a single trace spanning the
+gateway intake, each worker's consume/publish, the gateway's status
+consumer, and the cache writes (`ArangoService` methods are annotated with
+`@WithSpan`). A `TAG` lookup, for example, renders the fan-out to workers 1
+and 2 and the fan-in of their replies on one timeline.
+
+Configuration lives in each service's `application.properties`
+(`quarkus.otel.service.name`, `quarkus.otel.exporter.otlp.traces.endpoint`).
+Tracing is disabled under the test profile, where no collector runs.
 
 
 ## Manual start of services

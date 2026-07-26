@@ -1,5 +1,6 @@
 package cache;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
 import com.arangodb.ArangoCursor;
 import com.arangodb.ArangoDB;
@@ -137,6 +138,7 @@ public class ArangoService {
      * appended, so the full pick-up history stays visible. If the document is
      * gone (e.g. expired by TTL), it is recreated from the event's coordinates.
      */
+    @WithSpan
     public void recordClaim(String requestHash, String worker, String at,
                             String requestID, String id, String context) {
         Map<String, Object> claim = new LinkedHashMap<>();
@@ -170,6 +172,7 @@ public class ArangoService {
      * already pending, in progress or done stands as cached, and no new work
      * is queued.
      */
+    @WithSpan
     public boolean prepareRequestForPublish(LookupQueueRequest request, boolean hardRefresh) {
         String key = request.requestHash.toString();
         BaseDocument existing = getRequestDocument(key);
@@ -213,6 +216,7 @@ public class ArangoService {
      * error) state — the resolution is still useful to cache — and clears any
      * stale failure detail. If the document is gone, it is recreated.
      */
+    @WithSpan
     public void recordResults(String requestHash, List<?> reply, String worker, String at,
                               String requestID, String id, String context) {
         String aql = """
@@ -243,6 +247,7 @@ public class ArangoService {
      * failure never overwrites a lookup that is already done (another worker
      * may have answered successfully). If the document is gone, it is recreated.
      */
+    @WithSpan
     public void recordFailure(String requestHash, String detail, String worker, String at,
                               String requestID, String id, String context) {
         String aql = """

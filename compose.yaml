@@ -24,6 +24,16 @@ services:
     ports:
       - '8529:8529'
 
+  jaeger:
+    image: 'jaegertracing/all-in-one:1.62.0'
+    hostname: my-jaeger
+    container_name: some-jaeger
+    networks:
+      - idekanin_default
+    ports:
+      - '16686:16686'   # UI
+      - '4317:4317'     # OTLP gRPC ingest
+
   apiEndpoints:
     image: "com.demo.website:api-endpoints"
     hostname: "api-endpoints"
