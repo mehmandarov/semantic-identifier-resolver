@@ -64,6 +64,42 @@ services:
       apiEndpoints:
         condition: service_healthy
 
+  lookupworker2:
+    image: "com.demo.website:lookup-worker2"
+    hostname: "lookup-worker-2"
+    container_name: "lookup-worker-2"
+    ports:
+      - "9086:8080"
+    networks:
+      - idekanin_default
+    build:
+      context: ./lookup-worker2
+      dockerfile: DEV.Dockerfile
+    links:
+      - "apiEndpoints:api-endpoints"
+      - "rabbitmq:some-rabbit"
+    depends_on:
+      apiEndpoints:
+        condition: service_healthy
+
+  lookupworker3:
+    image: "com.demo.website:lookup-worker3"
+    hostname: "lookup-worker-3"
+    container_name: "lookup-worker-3"
+    ports:
+      - "9087:8080"
+    networks:
+      - idekanin_default
+    build:
+      context: ./lookup-worker3
+      dockerfile: DEV.Dockerfile
+    links:
+      - "apiEndpoints:api-endpoints"
+      - "rabbitmq:some-rabbit"
+    depends_on:
+      apiEndpoints:
+        condition: service_healthy
+
 networks:
   idekanin_default:
     name: idekanin_default

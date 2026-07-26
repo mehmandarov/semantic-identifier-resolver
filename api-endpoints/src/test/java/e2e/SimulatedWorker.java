@@ -13,12 +13,13 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
 import java.time.Instant;
 
 /**
- * Test-only stand-in for lookup-worker1: consumes lookup requests from
- * RabbitMQ and publishes status events (claimed, then done) back to the
- * status queue, mirroring the production worker. Like the production worker,
- * it never touches the cache database — the gateway's status consumer owns
- * all cache writes. Kept in this module so the whole POST -> queue -> worker
- * -> status events -> cache -> GET flow can be exercised inside a single JVM.
+ * Test-only stand-in worker: consumes lookup requests from RabbitMQ and
+ * publishes status events (claimed, then done with an echo reply) back to
+ * the status queue — the minimal implementation of the worker contract.
+ * Like the production workers, it never touches the cache database — the
+ * gateway's status consumer owns all cache writes. Kept in this module so
+ * the whole POST -> queue -> worker -> status events -> cache -> GET flow
+ * can be exercised inside a single JVM.
  */
 @ApplicationScoped
 public class SimulatedWorker {
@@ -37,9 +38,9 @@ public class SimulatedWorker {
         // Announce the pick-up first, so the gateway can record who claimed it.
         statusEmitter.send(statusEvent("claimed", req));
 
-        // Echo the input tuple as the worker's reply — a single element with
-        // the identity relationship, matching the production worker's v1
-        // behaviour — and report the lookup as done.
+        // Echo the input tuple as the worker's reply — a single element
+        // related as "same-as" (trivially: it is the input itself), the
+        // minimal valid worker answer — and report the lookup as done.
         JsonArray reply = new JsonArray()
                 .add(new JsonObject()
                         .put("id", req.id)

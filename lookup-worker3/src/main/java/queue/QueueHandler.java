@@ -13,12 +13,10 @@ import java.util.stream.Collectors;
 
 /**
  * The processing step of the worker: the plug-in slot where the resolution
- * logic goes. The logic is use-case specific and has to be implemented
- * separately for each worker, encapsulating one or several sources or sets
- * of rules. This worker covers the {@code TAG} context and answers with the
- * identifiers that are equivalent to the tag ({@code same-as}): the serial
- * number and the EPC contractor's descriptor. The source is a small
- * hardcoded demo mapping standing in for a real system.
+ * logic goes. This worker covers the {@code EPC_DESCRIPTOR} context — the
+ * identifiers assigned by the EPC contractor — and answers with the serial
+ * number that is equivalent to the descriptor ({@code same-as}). The source
+ * is a small hardcoded demo mapping standing in for the contractor's system.
  */
 @ApplicationScoped
 public class QueueHandler {
@@ -37,14 +35,10 @@ public class QueueHandler {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    /** Demo stand-in for this worker's source: tag -> equivalent identifiers. */
-    private static final Map<String, List<LookupResultElement>> TAG_EQUIVALENTS = Map.of(
-            "A-24HA001", List.of(
-                    new LookupResultElement("SN-1042-77", "SERIAL", "same-as"),
-                    new LookupResultElement("EJ101A", "EPC_DESCRIPTOR", "same-as")),
-            "A-24HA002", List.of(
-                    new LookupResultElement("SN-1042-78", "SERIAL", "same-as"),
-                    new LookupResultElement("EJ101B", "EPC_DESCRIPTOR", "same-as")));
+    /** Demo stand-in for this worker's source: EPC descriptor -> serial number. */
+    private static final Map<String, List<LookupResultElement>> DESCRIPTOR_SERIALS = Map.of(
+            "EJ101A", List.of(new LookupResultElement("SN-1042-77", "SERIAL", "same-as")),
+            "EJ101B", List.of(new LookupResultElement("SN-1042-78", "SERIAL", "same-as")));
 
     /**
      * Whether this worker's source can answer lookups in the given context.
@@ -61,9 +55,9 @@ public class QueueHandler {
 
     public List<LookupResultElement> processLookupRequest(LookupQueueRequest lookupReq) {
         System.out.println("*************Looked up ID: " + lookupReq.id + " and context: " + lookupReq.context);
-        // Unknown tags answer an empty reply: the source was consulted and
-        // had nothing — which is itself a cacheable answer.
-        return TAG_EQUIVALENTS.getOrDefault(normalize(lookupReq.id), List.of());
+        // Unknown descriptors answer an empty reply: the source was consulted
+        // and had nothing — which is itself a cacheable answer.
+        return DESCRIPTOR_SERIALS.getOrDefault(normalize(lookupReq.id), List.of());
     }
 
     private static String normalize(String id) {

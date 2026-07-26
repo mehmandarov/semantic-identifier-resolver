@@ -10,8 +10,15 @@
 ### Gateway liveness
 GET {{gateway}}/api/ping
 
-### Worker liveness
-GET {{worker}}/api/ping
+### Worker liveness — each worker introduces itself: pong, its name and the
+### contexts it replies to (worker.contexts).
+GET {{worker1}}/api/ping
+
+### Worker 2 liveness
+GET {{worker2}}/api/ping
+
+### Worker 3 liveness
+GET {{worker3}}/api/ping
 
 ### ArangoDB version, via the gateway internals endpoint
 GET {{gateway}}/api/internals/arangodb
@@ -20,6 +27,9 @@ GET {{gateway}}/api/internals/arangodb
 ### Full lookup, step 1: initiate (asynchronous request-reply)
 ### Answers 202 Accepted; the Location header points at the results URL.
 ### The requestHash is captured for the polling request below.
+### A TAG lookup is answered by BOTH worker 1 (same-as: serial number and
+### EPC descriptor) and worker 2 (part-of: the system) — the poll shows two
+### claimedBy entries and two reply blocks.
 ### ---------------------------------------------------------------------
 POST {{gateway}}/api/lookup
 Content-Type: application/json
@@ -55,3 +65,43 @@ Content-Type: application/json
 
 ### Unknown request hash answers 404
 GET {{gateway}}/api/cache/00000000-0000-0000-0000-000000000000
+
+### ---------------------------------------------------------------------
+### EPC descriptor lookup — answered by worker 3 alone: the serial number
+### that is same-as the contractor's descriptor. Poll with the request
+### below after a moment.
+### ---------------------------------------------------------------------
+POST {{gateway}}/api/lookup
+Content-Type: application/json
+
+{
+  "id": "EJ101A",
+  "context": "EPC_DESCRIPTOR"
+}
+
+> {%
+    client.global.set("requestHashEpc", response.body.requestHash);
+%}
+
+### Poll the EPC descriptor lookup
+GET {{gateway}}/api/cache/{{requestHashEpc}}
+
+### ---------------------------------------------------------------------
+### A context no worker covers: every worker ignores it, the request stays
+### pending, and the gateway's timeout sweep answers 504 after
+### lookup.timeout-seconds (60s by default).
+### ---------------------------------------------------------------------
+POST {{gateway}}/api/lookup
+Content-Type: application/json
+
+{
+  "id": "X-999",
+  "context": "NOBODY_HANDLES_THIS"
+}
+
+> {%
+    client.global.set("requestHashOrphan", response.body.requestHash);
+%}
+
+### Poll the unhandled-context lookup: 202 while pending, 504 once swept
+GET {{gateway}}/api/cache/{{requestHashOrphan}}

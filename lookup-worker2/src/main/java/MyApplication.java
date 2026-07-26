@@ -24,7 +24,7 @@ import java.util.Map;
 @Path("/")
 public class MyApplication{
 
-    private static final String WORKER_NAME = "lookup-worker-1";
+    private static final String WORKER_NAME = "lookup-worker-2";
 
     @Inject
     QueueHandler queueHandler;
@@ -58,8 +58,8 @@ public class MyApplication{
      */
     @Incoming("idMapper")
     @Blocking
-    @Counted(value = "id_lookup_service_app1", extraTags = {"purpose", "total"})
-    @Operation(summary = "CUSTOM: ID lookup service, app1",
+    @Counted(value = "id_lookup_service_app2", extraTags = {"purpose", "total"})
+    @Operation(summary = "CUSTOM: ID lookup service, app2",
             description = "Lookup a certain ID")
     public void idRetriever(JsonObject obj) {
         LookupQueueRequest lookupReq = obj.mapTo(LookupQueueRequest.class);

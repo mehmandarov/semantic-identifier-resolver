@@ -15,6 +15,14 @@
 │         ├── README.md
 │         ├── pom.xml
 │         └── src/
+├── lookup-worker2/
+│         ├── Dockerfile
+│         ├── pom.xml
+│         └── src/
+├── lookup-worker3/
+│         ├── Dockerfile
+│         ├── pom.xml
+│         └── src/
 └── pom.xml
 ```
 
@@ -27,7 +35,9 @@ All containers, ports and networks are defined in the [compose.yaml](compose.yam
 | Service Name                    | Container Name  | URL                     | Description                       |
 |---------------------------------|-----------------|-------------------------|-----------------------------------|
 | API Gateway                     | api-endpoints   | http://localhost:9081/  |                                   | 
-| Lookup Worker 1                 | lookup-worker-1 | http://localhost:9085/  |                                   |
+| Lookup Worker 1                 | lookup-worker-1 | http://localhost:9085/  | `TAG` → equivalent identifiers (`same-as`) |
+| Lookup Worker 2                 | lookup-worker-2 | http://localhost:9086/  | `TAG` → parent asset (`part-of`)  |
+| Lookup Worker 3                 | lookup-worker-3 | http://localhost:9087/  | `EPC_DESCRIPTOR` → serial number (`same-as`) |
 | RabbitMQ (Management Interface) | some-rabbit     | http://localhost:15672/ | Development only: `guest`/`guest` |
 | RabbitMQ (Queue)                | some-rabbit     | http://localhost:5672/  |                                   |
 | ArangoDB (Cache)                | some-arangodb   | http://localhost:8529/  |                                   |
@@ -84,9 +94,42 @@ the resolution logic is use-case specific and is implemented per worker. Results
 grouped per answering worker: each entry in `results` is a `{worker, at, reply}`
 block, and each reply element carries `{id, context, relationship}`, where
 `relationship` states how the returned identifier relates to the input identifier,
-per the Paper I interface (e.g. `part-of`, `has-part` — not only pure equivalence
-mappings). The version 1 worker implements the simplest case, echoing the input
-tuple as its reply with the identity relationship `same-as`.
+per the Paper I interface: `same-as` when both denote the same asset (equal, or an
+equivalent identifier in another context), `part-of`/`has-part` when the referents
+differ in granularity. Which worker answers what is described under
+[Workers](#workers) below.
+
+## Workers
+
+Every worker consumes the same lookup requests from its own queue bound to the
+shared exchange, so each worker sees each request. Which **contexts** a worker
+answers is deployment configuration — the `worker.contexts` property
+(comma-separated, matched case-insensitively) in the worker's
+`application.properties`. Requests in other contexts are ignored without a
+claim; if no worker covers a context, the request eventually answers `504`
+via the gateway's timeout sweep. *How* ids in those contexts are resolved is
+the worker's plug-in logic (`queue/QueueHandler`) — the three demo workers use
+small hardcoded mappings standing in for real systems:
+
+| Worker            | `worker.contexts` | Answers with                                    | Relationship |
+|-------------------|-------------------|--------------------------------------------------|--------------|
+| `lookup-worker-1` | `TAG`             | Serial number and EPC contractor's descriptor    | `same-as`    |
+| `lookup-worker-2` | `TAG`             | The system the tagged asset belongs to           | `part-of`    |
+| `lookup-worker-3` | `EPC_DESCRIPTOR`  | Serial number for the contractor's descriptor    | `same-as`    |
+
+Demo data: tag `A-24HA001` ≡ serial `SN-1042-77` ≡ EPC descriptor `EJ101A`,
+part of `SYSTEM-24` (and a second set: `A-24HA002` / `SN-1042-78` / `EJ101B`).
+A `TAG` lookup is answered by workers 1 *and* 2 — two `claimedBy` entries and
+two reply blocks in `results` — while an `EPC_DESCRIPTOR` lookup is answered
+by worker 3 alone. A known context with an unknown id answers `done` with an
+empty reply: the source was consulted and had nothing.
+
+Each worker's `GET /api/ping` introduces it, answering `pong` with the
+worker's name and its configured contexts:
+
+```json
+{"message": "pong", "worker": "lookup-worker-1", "contexts": ["TAG"]}
+```
 
 ## Lookup lifecycle, worker tracking and timeout
 
@@ -100,7 +143,10 @@ Flow of one request:
 
 1. `POST /api/lookup` — the gateway records the request as `pending` in the
    cache, publishes it to the work queue and answers `202` + `Location`.
-2. A worker consumes the request and immediately publishes a `claimed` event
+2. Every worker sees the request (each worker consumes from its own queue
+   bound to the shared exchange). A worker whose `worker.contexts` does not
+   cover the request's context ignores it without a claim; each worker that
+   does cover it publishes a `claimed` event
    (`{type, requestHash, requestID, id, context, worker, at}`), then runs its
    processing step.
 3. The gateway applies the claim: status `pending` → `in_progress`, and the
