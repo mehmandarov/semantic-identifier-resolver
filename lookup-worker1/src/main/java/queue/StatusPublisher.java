@@ -1,5 +1,7 @@
 package queue;
 
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -11,6 +13,7 @@ import org.eclipse.microprofile.reactive.messaging.Emitter;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The worker's only output channel: lookup status events published to the
@@ -37,7 +40,19 @@ public class StatusPublisher {
     Emitter<JsonObject> statusEmitter;
 
     public void claimed(LookupQueueRequest request, String workerName) {
-        statusEmitter.send(statusEvent("claimed", request, workerName));
+        JsonObject event = statusEvent("claimed", request, workerName);
+        Context traceContext = Context.current();
+        // Emit from outside the consuming message's context: with tracing
+        // active, an emission made on the @Blocking consumer's context is
+        // only flushed once the handler returns — which would delay the
+        // claim until after processing, defeating its purpose for slow
+        // lookups. A pool thread publishes immediately; the trace context
+        // is carried along so the event stays in the lookup's trace.
+        CompletableFuture.runAsync(() -> {
+            try (Scope ignored = traceContext.makeCurrent()) {
+                statusEmitter.send(event);
+            }
+        });
     }
 
     public void done(LookupQueueRequest request, List<LookupResultElement> reply, String workerName) {

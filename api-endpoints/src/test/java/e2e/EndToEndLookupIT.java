@@ -257,6 +257,50 @@ class EndToEndLookupIT {
     }
 
     @Test
+    void lookupCompletesOnlyWhenAllClaimingWorkersResponded() {
+        // Completion quorum: with two workers signed up (claimedBy), one
+        // reply is NOT enough — the lookup stays in_progress, exposing the
+        // partial answer, and only flips to done when the second claimant
+        // responds. A failure counts as a response, so a broken worker can
+        // not keep the lookup open forever.
+        String id = "Q-QUORUM-010";
+        String ctx = "TAG";
+        UUID hash = UUIDv5.fromUTF8(id.toUpperCase() + "_" + ctx.toUpperCase());
+        LookupQueueRequest req = new LookupQueueRequest(
+                id, ctx, UUID.randomUUID().toString(), hash.toString());
+        String requestID = req.requestID.toString();
+        String at = Instant.now().toString();
+        arangoService.recordPendingRequest(req);
+
+        // Two workers claim the request.
+        arangoService.recordClaim(hash.toString(), "worker-A", at, requestID, id, ctx);
+        arangoService.recordClaim(hash.toString(), "worker-B", at, requestID, id, ctx);
+
+        // First reply: still in_progress, partial results visible.
+        arangoService.recordResults(hash.toString(),
+                List.of(Map.of("id", "Q-1", "context", "SERIAL", "relationship", "same-as")),
+                "worker-A", at, requestID, id, ctx);
+        given().when().get("/api/lookup/results/{k}", hash.toString())
+                .then().statusCode(202)
+                .body(matchesJsonSchema(STATE_SCHEMA))
+                .body("status", equalTo("in_progress"))
+                .body("resultsByWorker.size()", equalTo(1))
+                .body("results[0].id", equalTo("Q-1"));
+
+        // Second claimant responds with a failure: everyone has now answered,
+        // and one of them succeeded -> done. The failure stays visible.
+        arangoService.recordFailure(hash.toString(), "source exploded", "worker-B", at,
+                requestID, id, ctx);
+        given().when().get("/api/lookup/results/{k}", hash.toString())
+                .then().statusCode(200)
+                .body(matchesJsonSchema(STATE_SCHEMA))
+                .body("status", equalTo("done"))
+                .body("results[0].id", equalTo("Q-1"))
+                .body("failuresByWorker[0].worker", equalTo("worker-B"))
+                .body("detail", nullValue());
+    }
+
+    @Test
     void post_blankId_returns400() {
         given().contentType("application/json")
                 .body(Map.of("id", "  ", "context", "TAG"))

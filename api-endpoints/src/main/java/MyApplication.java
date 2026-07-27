@@ -105,16 +105,18 @@ public class MyApplication {
     @Path("/lookup/results/{key}")
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(summary = "CUSTOM: Results endpoint",
-            description = "Reports the state of a lookup request by its request hash. " +
+            description = "Reports the state of a lookup request by its request hash. A lookup " +
+                    "is done only when every worker that claimed it has replied (or failed). " +
                     "The response code reflects the outcome: 200 done, 202 pending or " +
-                    "in progress (claimedBy lists the workers that picked the request up), " +
-                    "404 unknown request hash, 500 worker-reported failure, 504 timed out.")
+                    "in progress (claimedBy lists the workers that picked the request up; " +
+                    "partial results may already be present), 404 unknown request hash, " +
+                    "500 all claiming workers failed, 504 timed out (partial results may be present).")
     @APIResponse(responseCode = "200", description = "Lookup done; the body carries the results")
-    @APIResponse(responseCode = "202", description = "Lookup accepted and pending, or claimed by a worker and in progress")
+    @APIResponse(responseCode = "202", description = "Lookup accepted and pending, or claimed and in progress (body may carry partial results)")
     @APIResponse(responseCode = "400", description = "Blank request hash")
     @APIResponse(responseCode = "404", description = "Unknown request hash")
-    @APIResponse(responseCode = "500", description = "Lookup failed on the server side; the body carries the detail")
-    @APIResponse(responseCode = "504", description = "Lookup timed out before any worker completed it")
+    @APIResponse(responseCode = "500", description = "All claiming workers failed; the body carries the detail")
+    @APIResponse(responseCode = "504", description = "Lookup timed out before all claiming workers completed it (body may carry partial results)")
     public Response get(@PathParam("key") String key) {
         if (isBlank(key)) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -139,29 +141,49 @@ public class MyApplication {
         if (claimedBy != null) {
             body.put("claimedBy", claimedBy);
         }
+        // Replies and failures collected so far — also surfaced for
+        // in-progress and timed-out lookups, as partial answers.
+        Object resultsByWorker = doc.getAttribute("resultsByWorker");
+        Object failuresByWorker = doc.getAttribute("failuresByWorker");
         switch (status) {
             case ArangoService.STATUS_DONE:
-                Object resultsByWorker = doc.getAttribute("resultsByWorker");
                 // Aggregated view: the distinct reply elements across all
                 // workers; per-worker provenance stays in resultsByWorker.
                 body.put("results", aggregateReplies(resultsByWorker));
                 body.put("resultsByWorker", resultsByWorker == null ? List.of() : resultsByWorker);
+                if (failuresByWorker != null) {
+                    body.put("failuresByWorker", failuresByWorker);
+                }
                 // Provenance of the latest reply.
                 body.put("resolvedBy", doc.getAttribute("resolvedBy"));
                 body.put("resolvedAt", doc.getAttribute("resolvedAt"));
                 return Response.ok(body).build();
             case ArangoService.STATUS_PENDING:
             case ArangoService.STATUS_IN_PROGRESS:
+                putPartial(body, resultsByWorker, failuresByWorker);
                 return Response.accepted(body).build();
             case ArangoService.STATUS_TIMED_OUT:
+                putPartial(body, resultsByWorker, failuresByWorker);
                 body.put("detail", doc.getAttribute("detail"));
                 return Response.status(Response.Status.GATEWAY_TIMEOUT).entity(body).build();
             case ArangoService.STATUS_ERROR:
             default:
+                putPartial(body, resultsByWorker, failuresByWorker);
                 body.put("detail", doc.getAttribute("detail"));
                 body.put("resolvedBy", doc.getAttribute("resolvedBy"));
                 body.put("resolvedAt", doc.getAttribute("resolvedAt"));
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(body).build();
+        }
+    }
+
+    /** Adds the replies/failures collected so far to a non-done state body. */
+    private static void putPartial(Map<String, Object> body, Object resultsByWorker, Object failuresByWorker) {
+        if (resultsByWorker != null) {
+            body.put("results", aggregateReplies(resultsByWorker));
+            body.put("resultsByWorker", resultsByWorker);
+        }
+        if (failuresByWorker != null) {
+            body.put("failuresByWorker", failuresByWorker);
         }
     }
 

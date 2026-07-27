@@ -69,7 +69,7 @@ polls until the lookup completes.
 | Method | Path                       | Codes                                                                                                                    |
 |--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | POST   | `/api/lookup`              | `202` accepted; `resultsUrl` in the body and the `Location` header point at the results URL. A repeat POST for a lookup that is pending, in progress or done answers from the cache without queueing new work — unless the `resultsHardRefresh: true` header forces reprocessing; a timed-out or failed lookup is re-queued (retry). `400` blank `id`/`context` |
-| GET    | `/api/lookup/results/{requestHash}` | `200` done (with `results`, the aggregated distinct reply elements, and `resultsByWorker`, one block per answering worker); `202` pending or in progress (with `claimedBy`); `500` error (with `detail`); `504` timed out; `404` unknown hash; `400` blank key |
+| GET    | `/api/lookup/results/{requestHash}` | `200` done — every claimed worker responded (with `results`, the aggregated distinct reply elements, and `resultsByWorker`/`failuresByWorker`, one block per worker); `202` pending or in progress (with `claimedBy` and any partial results); `500` all claiming workers failed (with `detail`); `504` timed out (partial results may be present); `404` unknown hash; `400` blank key |
 | GET    | `/api/ping`                | `200` liveness check                                                                                                     |
 
 Example:
@@ -137,10 +137,13 @@ Worker 2 additionally exposes a **FAKE, dev/demo-only** slowdown knob,
 `worker.fake-processing-delay-ms` (default `0` = off), which sleeps inside
 the processing step after the claim. Set it to `15000` for a visibly slow
 but successful lookup, or to `90000` (beyond the 60s lookup timeout) to
-watch the whole failure story in Jaeger and the API: `202 in_progress` →
-`504 timed-out` → the late reply lands and the lookup flips to `200 done`
-(accept-late). The same lifecycle is covered end-to-end by the
-`SlowSimulatedWorker` mock in the e2e suite. Never set this in production.
+watch the whole completion story in Jaeger and the API: worker 1 answers a
+`TAG` lookup immediately, but because worker 2 also claimed it, the lookup
+stays `202 in_progress` (worker 1's partial results already visible), the
+sweep answers `504 timed-out` at 60s, and worker 2's late reply finally
+completes the sign-up sheet and flips it to `200 done` (accept-late). The
+same lifecycle is covered end-to-end by the `SlowSimulatedWorker` mock in
+the e2e suite. Never set this in production.
 
 Turning it on and off (no image rebuild needed — the property maps to the
 `WORKER_FAKE_PROCESSING_DELAY_MS` environment variable, which
@@ -192,25 +195,29 @@ Flow of one request:
    (`{type, requestHash, requestID, id, context, worker, at}`), then runs its
    processing step.
 3. The gateway applies the claim: status `pending` → `in_progress`, and the
-   `{worker, at}` pair is appended to the document's `claimedBy` list — so a
-   poll shows exactly which worker(s) picked the request up.
+   `{worker, at, requestID}` entry is appended to the document's `claimedBy`
+   list — the request's sign-up sheet: a poll shows exactly which worker(s)
+   picked the request up, and completion is judged against it.
 4. The worker publishes `done` (with `reply`, a list of
    `{id, context, relationship}` elements) or `failed` (with `detail`).
-5. The gateway applies the outcome: each worker's reply is merged into the
-   cache document's `resultsByWorker` as a `{worker, at, reply}` block keyed
-   by worker name — replies from several workers converge without overwriting
-   each other, and a redelivered reply replaces the worker's previous block.
-   `resolvedBy`/`resolvedAt` track the latest reply. A failure marks the
-   lookup `error` but never overwrites results another worker already
-   delivered; claims never regress a finished lookup.
+5. The gateway applies the outcome and recomputes the lifecycle: replies are
+   merged into `resultsByWorker` and failures into `failuresByWorker`, both
+   keyed by worker name (a redelivery replaces the worker's previous block).
+   The lookup becomes `done` only when **every worker that claimed the
+   current occurrence** (matching `requestID`) has responded and at least
+   one of them delivered results; it becomes `error` when all of them
+   failed. Until then it stays `in_progress` — partial results are already
+   visible on polls — and a fresh claim reopens even a `done` lookup.
+   `resolvedBy`/`resolvedAt` track the latest reply.
 6. A scheduled sweep in the gateway marks lookups still `pending`/`in_progress`
    after `lookup.timeout-seconds` (measured from `createdAt`) as `timed-out` —
-   one mechanism covers both "never picked up" and "worker died mid-job".
-   A result arriving *after* the timeout still resolves the lookup
-   (accept-late policy).
+   one mechanism covers both "never picked up" and "a claimant never
+   finished". Partial results collected before the timeout stay visible on
+   the `504` response. A late reply that completes the sign-up sheet still
+   resolves the lookup (accept-late policy).
 7. Polls of `GET /api/lookup/results/{requestHash}` reflect the state: `202` while
-   `pending`/`in_progress` (body carries `claimedBy`), `200` when `done`,
-   `500` on `error`, `504` when `timed-out`.
+   `pending`/`in_progress` (body carries `claimedBy` and any partial
+   results), `200` when `done`, `500` on `error`, `504` when `timed-out`.
 
 Timeout configuration (gateway `application.properties`):
 
@@ -306,8 +313,9 @@ gateway — worker-originated fields arrive as status events):
 | `context`     | string          | gateway on POST                                     | Business context                           |
 | `status`      | `pending` / `in_progress` / `done` / `error` / `timed-out` | gateway       | Current lifecycle state                    |
 | `createdAt`   | number (epoch s)| gateway on POST (or event on recreate)              | **TTL anchor** and timeout anchor — refreshed only when a timed-out/failed lookup is retried by a new POST |
-| `claimedBy`   | list of `{worker, at}` | `claimed` events                             | Pick-up history: which worker(s) claimed the request, across retries |
-| `resultsByWorker` | list of `{worker, at, reply}` | `done` events             | One block per answering worker; `reply` is that worker's resolved elements `{id, context, relationship}`. `GET` also answers `results`: the distinct reply elements aggregated across workers, computed on read |
+| `claimedBy`   | list of `{worker, at, requestID}` | `claimed` events                  | Sign-up sheet and pick-up history, kept across retries; completion is judged against the claims of the current `requestID` |
+| `resultsByWorker` | list of `{worker, at, reply, requestID}` | `done` events             | One block per answering worker; `reply` is that worker's resolved elements `{id, context, relationship}`. `GET` also answers `results`: the distinct reply elements aggregated across workers, computed on read |
+| `failuresByWorker` | list of `{worker, at, detail, requestID}` | `failed` events          | One block per failed worker — a failure counts as a response, so a broken worker cannot keep the lookup open |
 | `resolvedBy`  | string          | `done`/`failed` events                              | Provenance: which worker answered last     |
 | `resolvedAt`  | string (ISO instant) | `done`/`failed` events                         | Provenance: when it answered               |
 | `detail`      | string          | `failed` events or the timeout sweep                | Human-readable failure reason              |

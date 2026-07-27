@@ -132,11 +132,13 @@ public class ArangoService {
 
     /**
      * Records that a worker has claimed (picked up) a lookup request: appends
-     * a {@code {worker, at}} entry to the document's claimedBy list and moves
-     * a pending (or timed-out) lookup to in_progress. A claim never regresses
-     * a lookup that is already done or in error — the claim entry is still
-     * appended, so the full pick-up history stays visible. If the document is
-     * gone (e.g. expired by TTL), it is recreated from the event's coordinates.
+     * a {@code {worker, at, requestID}} entry to the document's claimedBy
+     * list (the request's sign-up sheet) and recomputes the lifecycle state.
+     * A lookup is only complete when every worker that claimed the current
+     * occurrence (same requestID) has replied — so a fresh claim moves the
+     * lookup to in_progress, even reopening one that was already done. The
+     * claim history is append-only across retries. If the document is gone
+     * (e.g. expired by TTL), it is recreated from the event's coordinates.
      */
     @WithSpan
     public void recordClaim(String requestHash, String worker, String at,
@@ -144,13 +146,22 @@ public class ArangoService {
         Map<String, Object> claim = new LinkedHashMap<>();
         claim.put("worker", worker);
         claim.put("at", at);
+        claim.put("requestID", requestID);
         String aql = """
                 UPSERT { _key: @key }
                 INSERT { _key: @key, requestID: @requestID, id: @id, context: @context,
                          status: "in_progress", createdAt: @now, claimedBy: [ @claim ] }
-                UPDATE { status: OLD.status IN ["pending", "timed-out"] ? "in_progress" : OLD.status,
-                         claimedBy: APPEND(NOT_NULL(OLD.claimedBy, []), [ @claim ]) }
-                IN @@coll
+                UPDATE FIRST(
+                    LET newClaims = APPEND(NOT_NULL(OLD.claimedBy, []), [ @claim ])
+                    LET expected = UNIQUE(FOR c IN newClaims FILTER c.requestID == OLD.requestID RETURN c.worker)
+                    LET succeeded = UNIQUE(FOR r IN NOT_NULL(OLD.resultsByWorker, []) FILTER r.requestID == OLD.requestID RETURN r.worker)
+                    LET failedW = UNIQUE(FOR f IN NOT_NULL(OLD.failuresByWorker, []) FILTER f.requestID == OLD.requestID RETURN f.worker)
+                    LET responded = UNION_DISTINCT(succeeded, failedW)
+                    LET complete = LENGTH(MINUS(expected, responded)) == 0
+                    LET newStatus = complete ? (LENGTH(succeeded) > 0 ? "done" : "error") : "in_progress"
+                    RETURN { claimedBy: newClaims, status: newStatus,
+                             detail: newStatus == "in_progress" ? null : OLD.detail }
+                ) IN @@coll OPTIONS { keepNull: false }
                 """;
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context, Map.of("claim", claim)))) {
@@ -186,7 +197,8 @@ public class ArangoService {
             String aql = """
                     UPDATE @key WITH { status: "pending", requestID: @requestID,
                                        createdAt: @now, detail: null,
-                                       resultsByWorker: null, resolvedBy: null, resolvedAt: null }
+                                       resultsByWorker: null, failuresByWorker: null,
+                                       resolvedBy: null, resolvedAt: null }
                     IN @@coll OPTIONS { keepNull: false }
                     """;
             try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
@@ -207,30 +219,43 @@ public class ArangoService {
     }
 
     /**
-     * Merges a worker's reply into the results of a lookup request and marks
-     * it done. Replies are aggregated per worker: each entry in the document's
-     * resultsByWorker list is one {@code {worker, at, reply}} block, so answers
-     * from several workers converge without overwriting each other, and a
-     * redelivered reply replaces the worker's previous block instead of
-     * duplicating it. A late reply deliberately overwrites a timed-out (or
-     * error) state — the resolution is still useful to cache — and clears any
-     * stale failure detail. If the document is gone, it is recreated.
+     * Merges a worker's reply into the results of a lookup request and
+     * recomputes the lifecycle state. Replies are aggregated per worker: each
+     * entry in the document's resultsByWorker list is one
+     * {@code {worker, at, reply, requestID}} block, so answers from several
+     * workers converge without overwriting each other, and a redelivered
+     * reply replaces the worker's previous block instead of duplicating it.
+     * The lookup only becomes done when every worker that claimed the current
+     * occurrence has replied (or failed); until then it stays in_progress —
+     * or timed-out, which only a completing reply may overwrite (accept-late
+     * policy, clearing the stale detail). If the document is gone, it is
+     * recreated, and a reply with no matching claims completes immediately.
      */
     @WithSpan
     public void recordResults(String requestHash, List<?> reply, String worker, String at,
                               String requestID, String id, String context) {
         String aql = """
-                LET replyBlock = { worker: @worker, at: @at, reply: @reply }
+                LET replyBlock = { worker: @worker, at: @at, reply: @reply, requestID: @requestID }
                 UPSERT { _key: @key }
                 INSERT { _key: @key, requestID: @requestID, id: @id, context: @context,
                          status: "done", createdAt: @now, resultsByWorker: [ replyBlock ],
                          resolvedBy: @worker, resolvedAt: @at }
-                UPDATE { status: "done",
-                         resultsByWorker: APPEND(
-                             (FOR r IN NOT_NULL(OLD.resultsByWorker, []) FILTER r.worker != @worker RETURN r),
-                             [ replyBlock ]),
-                         resolvedBy: @worker, resolvedAt: @at, detail: null }
-                IN @@coll OPTIONS { keepNull: false }
+                UPDATE FIRST(
+                    LET newResults = APPEND(
+                        (FOR r IN NOT_NULL(OLD.resultsByWorker, []) FILTER r.worker != @worker RETURN r),
+                        [ replyBlock ])
+                    LET newFailures = (FOR f IN NOT_NULL(OLD.failuresByWorker, []) FILTER f.worker != @worker RETURN f)
+                    LET expected = UNIQUE(FOR c IN NOT_NULL(OLD.claimedBy, []) FILTER c.requestID == OLD.requestID RETURN c.worker)
+                    LET succeeded = UNIQUE(FOR r IN newResults FILTER r.requestID == OLD.requestID RETURN r.worker)
+                    LET failedW = UNIQUE(FOR f IN newFailures FILTER f.requestID == OLD.requestID RETURN f.worker)
+                    LET responded = UNION_DISTINCT(succeeded, failedW)
+                    LET complete = LENGTH(MINUS(expected, responded)) == 0
+                    LET newStatus = complete ? (LENGTH(succeeded) > 0 ? "done" : "error")
+                                             : (OLD.status == "timed-out" ? "timed-out" : "in_progress")
+                    RETURN { resultsByWorker: newResults, failuresByWorker: newFailures,
+                             status: newStatus, resolvedBy: @worker, resolvedAt: @at,
+                             detail: newStatus == "done" ? null : OLD.detail }
+                ) IN @@coll OPTIONS { keepNull: false }
                 """;
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context,
@@ -243,28 +268,50 @@ public class ArangoService {
     }
 
     /**
-     * Marks a lookup request as failed with the worker's failure detail. A
-     * failure never overwrites a lookup that is already done (another worker
-     * may have answered successfully). If the document is gone, it is recreated.
+     * Records a worker's failure for a lookup request and recomputes the
+     * lifecycle state. Failures are tracked per worker in failuresByWorker
+     * ({@code {worker, at, detail, requestID}}), so a failed worker still
+     * counts as having responded — one broken worker can not keep a lookup
+     * in_progress forever. When every claimed worker has responded, the
+     * lookup becomes done if anyone succeeded, or error if all failed; a
+     * failure never erases successful results. If the document is gone, it
+     * is recreated.
      */
     @WithSpan
     public void recordFailure(String requestHash, String detail, String worker, String at,
                               String requestID, String id, String context) {
+        Map<String, Object> failure = new LinkedHashMap<>();
+        failure.put("worker", worker);
+        failure.put("at", at);
+        failure.put("detail", detail == null ? "Unknown processing failure." : detail);
+        failure.put("requestID", requestID);
         String aql = """
                 UPSERT { _key: @key }
                 INSERT { _key: @key, requestID: @requestID, id: @id, context: @context,
-                         status: "error", createdAt: @now, detail: @detail,
+                         status: "error", createdAt: @now, detail: @failure.detail,
+                         failuresByWorker: [ @failure ],
                          resolvedBy: @worker, resolvedAt: @at }
-                UPDATE { status: OLD.status == "done" ? OLD.status : "error",
-                         detail: OLD.status == "done" ? OLD.detail : @detail,
-                         resolvedBy: OLD.status == "done" ? OLD.resolvedBy : @worker,
-                         resolvedAt: OLD.status == "done" ? OLD.resolvedAt : @at }
-                IN @@coll
+                UPDATE FIRST(
+                    LET newFailures = APPEND(
+                        (FOR f IN NOT_NULL(OLD.failuresByWorker, []) FILTER f.worker != @worker RETURN f),
+                        [ @failure ])
+                    LET expected = UNIQUE(FOR c IN NOT_NULL(OLD.claimedBy, []) FILTER c.requestID == OLD.requestID RETURN c.worker)
+                    LET succeeded = UNIQUE(FOR r IN NOT_NULL(OLD.resultsByWorker, []) FILTER r.requestID == OLD.requestID RETURN r.worker)
+                    LET failedW = UNIQUE(FOR f IN newFailures FILTER f.requestID == OLD.requestID RETURN f.worker)
+                    LET responded = UNION_DISTINCT(succeeded, failedW)
+                    LET complete = LENGTH(MINUS(expected, responded)) == 0
+                    LET newStatus = complete ? (LENGTH(succeeded) > 0 ? "done" : "error")
+                                             : (OLD.status == "timed-out" ? "timed-out" : "in_progress")
+                    RETURN { failuresByWorker: newFailures, status: newStatus,
+                             detail: newStatus == "error" ? @failure.detail
+                                     : (newStatus == "done" ? null : OLD.detail),
+                             resolvedBy: newStatus == "done" ? OLD.resolvedBy : @worker,
+                             resolvedAt: newStatus == "done" ? OLD.resolvedAt : @at }
+                ) IN @@coll OPTIONS { keepNull: false }
                 """;
         try (ArangoCursor<Void> ignored = arango.db(dbName).query(aql, Void.class,
                 baseBindVars(requestHash, requestID, id, context,
-                        Map.of("detail", detail == null ? "Unknown processing failure." : detail,
-                                "worker", worker, "at", at)))) {
+                        Map.of("failure", failure, "worker", worker, "at", at)))) {
             Log.info("Recorded failure from " + worker + " for request: " + requestHash
                     + " (requestID: " + requestID + ")");
         } catch (ArangoDBException | IOException e) {

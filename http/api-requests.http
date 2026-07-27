@@ -47,11 +47,12 @@ Content-Type: application/json
 
 ### ---------------------------------------------------------------------
 ### Full lookup, step 2: poll the results URL
-### 202 while pending/in_progress (body carries claimedBy once a worker
-### picked the request up), 200 when done — results aggregates the distinct
-### reply elements across workers, resultsByWorker holds one
-### {worker, at, reply} block per answering worker — 500 on error, 504 when
-### timed out. Response shapes: see schemas/lookup-state.schema.json.
+### 202 while pending/in_progress (claimedBy lists who signed up; partial
+### results may already be present), 200 when done — a lookup is done only
+### when EVERY claiming worker replied (or failed): results aggregates the
+### distinct reply elements, resultsByWorker/failuresByWorker hold one block
+### per worker — 500 when all claimants failed, 504 when timed out (partial
+### results may be present). Shapes: schemas/lookup-state.schema.json.
 ### Re-run until the status flips to done. A repeat POST of the same lookup
 ### answers from the cache without re-queueing work.
 ### ---------------------------------------------------------------------

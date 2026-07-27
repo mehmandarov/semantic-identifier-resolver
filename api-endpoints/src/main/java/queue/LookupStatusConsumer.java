@@ -15,10 +15,11 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
  * cache. This is the only place where worker output reaches the database —
  * the workers themselves know nothing about the cache, only the two queues.
  * The writes are safe under redelivery and competing gateway replicas: claims
- * append to a history list, each worker's reply is upserted into the results
- * by worker name (a redelivery replaces the block rather than duplicating
- * it), "done" wins over any other state, and "failed" never overwrites a
- * successful resolution.
+ * append to a sign-up history, each worker's reply or failure is upserted by
+ * worker name (a redelivery replaces the block rather than duplicating it),
+ * and the lifecycle state is recomputed on every event — a lookup is done
+ * only when every worker that claimed the current occurrence has responded,
+ * with at least one success; error when all of them failed.
  */
 @ApplicationScoped
 public class LookupStatusConsumer {
