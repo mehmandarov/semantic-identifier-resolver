@@ -95,8 +95,8 @@
     <dependency>
       <groupId>org.mozilla</groupId>
       <artifactId>rhino</artifactId>
-      <!-- 1.8.1 is the first 1.8.x with the CVE-2025-66453 fix (toFixed DoS). -->
-      <version>1.8.1</version>
+      <!-- 1.9.1 is the first 1.8.x with the CVE-2025-66453 fix (toFixed DoS). -->
+      <version>1.9.1</version>
       <scope>test</scope>
     </dependency>
     <dependency>
