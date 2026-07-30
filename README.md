@@ -1,3 +1,9 @@
+# Semantic Identifier Resolver
+
+Reference implementation of the distributed, context-aware identifier
+resolution architecture described in the PhD thesis *Semantic Identifier
+Mapping under Digital Transformation*.
+
 ```
 .
 ├── README.md
@@ -54,7 +60,7 @@ All containers, ports and networks are defined in the [compose.yaml](compose.yam
 ## Local install and run
 
 1. Install [Colima](https://github.com/abiosoft/colima) and `docker` client + `docker compose` plug-in
-2. Run `docker compose --env-file .env.arangodb -f compose.yaml -p idekanin-resolver up -d`
+2. Run `docker compose --env-file .env.arangodb -f compose.yaml -p semantic-identifier-resolver up -d`
 
 Note: the `--env-file` flag is required so that `${TOP_SECRET}` in `compose.yaml` is
 interpolated for both the ArangoDB root password and the gateway's cache credentials
@@ -152,11 +158,11 @@ Turning it on and off (no image rebuild needed — the property maps to the
 ```shell
 # ON: recreate worker 2 with a 90s delay (exceeds the 60s timeout)
 WORKER2_FAKE_DELAY_MS=90000 docker compose --env-file .env.arangodb \
-  -f compose.yaml -p idekanin-resolver up -d lookupworker2
+  -f compose.yaml -p semantic-identifier-resolver up -d lookupworker2
 
 # OFF: recreate without the variable (falls back to 0)
 docker compose --env-file .env.arangodb \
-  -f compose.yaml -p idekanin-resolver up -d lookupworker2
+  -f compose.yaml -p semantic-identifier-resolver up -d lookupworker2
 ```
 
 Worker 2 logs a `WARN` at start-up and per request while the delay is
@@ -402,3 +408,13 @@ Every push and pull request runs the full pipeline via GitHub Actions
 Maven dependencies and GitHub Actions themselves are kept up to date by
 Dependabot (`.github/dependabot.yml`, weekly cadence, PRs grouped by Quarkus
 platform vs. testing libraries).
+
+## License
+
+Copyright (C) 2026 Rustam Mehmandarov.
+
+This project is licensed under the GNU Affero General Public License,
+version 3 only (`AGPL-3.0-only`). If you modify the software and make it
+available to users over a network, the license requires you to offer those
+users the corresponding source code. See [LICENSE](LICENSE) and
+[LICENSES/AGPL-3.0-only.txt](LICENSES/AGPL-3.0-only.txt).

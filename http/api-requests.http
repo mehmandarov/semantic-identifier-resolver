@@ -1,10 +1,10 @@
 ### ---------------------------------------------------------------------
-### idekanin-resolver — API walkthrough
+### semantic-identifier-resolver — API walkthrough
 ###
 ### Run these with the IntelliJ HTTP Client (or the VS Code REST Client).
 ### Hosts come from http-client.env.json — pick the "dev" environment when
 ### prompted. Start the stack first (from the repository root):
-###   docker compose --env-file .env.arangodb -f compose.yaml -p idekanin-resolver up -d
+###   docker compose --env-file .env.arangodb -f compose.yaml -p semantic-identifier-resolver up -d
 ### ---------------------------------------------------------------------
 
 ### Gateway liveness

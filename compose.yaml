@@ -6,7 +6,7 @@ services:
     volumes:
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro  # Mount config file (read-only)
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     ports:
       - '15672:15672'
       - '5672:5672'
@@ -20,7 +20,7 @@ services:
     env_file:
       - .env.arangodb
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     ports:
       - '8529:8529'
 
@@ -29,7 +29,7 @@ services:
     hostname: my-jaeger
     container_name: some-jaeger
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     ports:
       - '16686:16686'   # UI
       - '4317:4317'     # OTLP gRPC ingest
@@ -43,7 +43,7 @@ services:
     ports:
       - "9081:8080"
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     build:
       context: ./api-endpoints
       dockerfile: DEV.Dockerfile
@@ -63,7 +63,7 @@ services:
     ports:
       - "9085:8080"
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     build:
       context: ./lookup-worker1
       dockerfile: DEV.Dockerfile
@@ -85,7 +85,7 @@ services:
     ports:
       - "9086:8080"
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     build:
       context: ./lookup-worker2
       dockerfile: DEV.Dockerfile
@@ -103,7 +103,7 @@ services:
     ports:
       - "9087:8080"
     networks:
-      - idekanin_default
+      - semantic_identifier_resolver_default
     build:
       context: ./lookup-worker3
       dockerfile: DEV.Dockerfile
@@ -115,6 +115,6 @@ services:
         condition: service_healthy
 
 networks:
-  idekanin_default:
-    name: idekanin_default
+  semantic_identifier_resolver_default:
+    name: semantic_identifier_resolver_default
     external: false

@@ -7,11 +7,11 @@
 #
 # Then, build the image with:
 #
-# docker build -f src/main/docker/Dockerfile.native -t quarkus/idekanin-resolver .
+# docker build -f src/main/docker/Dockerfile.native -t semantic-identifier-resolver/api-endpoints .
 #
 # Then run the container using:
 #
-# docker run -i --rm -p 8080:8080 quarkus/idekanin-resolver
+# docker run -i --rm -p 8080:8080 semantic-identifier-resolver/api-endpoints
 #
 ###
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6
