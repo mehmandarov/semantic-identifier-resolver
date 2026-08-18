@@ -13,9 +13,6 @@ Mapping under Digital Transformation*.
 │         ├── README.md
 │         ├── pom.xml
 │         └── src/
-├── api-lookup-cache/
-│         ├── Dockerfile
-│         └── src/
 ├── http/                 # API walkthrough for the IntelliJ HTTP Client
 ├── schemas/              # JSON Schemas: the API response contract
 ├── lookup-worker1/
